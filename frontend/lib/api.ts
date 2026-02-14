@@ -123,3 +123,29 @@ export const fetchGraph = (link: string): Promise<ApiGraphResponse> =>
 
 export const fetchPaper = (link: string): Promise<PaperResponse> =>
   requestJson<PaperResponse>("/paper", { link });
+
+export type SummaryAudioRequest = {
+  summary: string;
+  lang: "en" | "fr" | "es" | "hi" | "ar" | "ur";
+};
+
+export const generateSummaryAudio = async (
+  payload: SummaryAudioRequest,
+): Promise<Blob> => {
+  const response = await fetch(buildUrl("/api/audio/generate", {}), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "audio/mpeg",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const detail = await parseErrorDetail(response);
+    const statusLabel = `${response.status} ${response.statusText}`.trim();
+    throw new Error(detail ? `${statusLabel}: ${detail}` : statusLabel);
+  }
+
+  return response.blob();
+};

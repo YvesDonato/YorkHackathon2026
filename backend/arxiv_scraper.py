@@ -6,6 +6,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from routes.audio import router as audio_router
 
 app = FastAPI(title="arXiv Paper API")
 
@@ -21,9 +22,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+app.include_router(audio_router)
 
 
 class GraphNode(BaseModel):
