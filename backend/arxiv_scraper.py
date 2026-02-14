@@ -1,6 +1,5 @@
 import os
 import xml.etree.ElementTree as ET
-<<<<<<< HEAD
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -11,7 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from auth import get_current_user, router as auth_router
+from auth import get_current_user, router as auth_router, validate_auth_config
 from database import close_db, connect_db, get_db
 from papers import (
     cosine_similarity,
@@ -19,6 +18,8 @@ from papers import (
     generate_embeddings_batch,
     router as papers_router,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -44,9 +45,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
-=======
-app = FastAPI(title="arXiv Paper API")
->>>>>>> parent of 0f7f4a2... added: db connection, auth, embedding model
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
@@ -63,6 +61,10 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(auth_router)
+app.include_router(papers_router)
 
 
 @app.get("/healthz")
