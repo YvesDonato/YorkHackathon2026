@@ -56,6 +56,7 @@ export default function Home() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [viewport, setViewport] = useState({ width: 900, height: 560 });
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
 
   const selectedNode = useMemo(
     () => graphState.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -164,6 +165,14 @@ export default function Home() {
     },
     [],
   );
+
+  const handleNodeMouseDown = useCallback((nodeId: string) => {
+    setFocusedNodeId(nodeId);
+  }, []);
+
+  const handleNodeMouseUp = useCallback(() => {
+    setFocusedNodeId(null);
+  }, []);
 
   const handleSeedSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -384,6 +393,7 @@ export default function Home() {
         }
         node.fx = node.x;
         node.fy = node.y;
+        handleNodeMouseDown(node.id);
       })
       .on("drag", (event: any, node: any) => {
         node.fx = event.x;
@@ -395,20 +405,24 @@ export default function Home() {
         }
         node.fx = null;
         node.fy = null;
+        handleNodeMouseUp();
       });
 
     nodeSelection.call(dragBehavior)
       .on("mouseenter", function (event: MouseEvent, node: ApiGraphNode) {
+        if (focusedNodeId) return; // Hide tooltip if focused
         tooltip
           .style("visibility", "visible")
           .html(`<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>`);
       })
       .on("mousemove", function (event: MouseEvent) {
+        if (focusedNodeId) return;
         tooltip
           .style("left", (event.clientX + 15) + "px")
           .style("top", (event.clientY + 15) + "px");
       })
       .on("mouseleave", function () {
+        handleNodeMouseUp();
         tooltip.style("visibility", "hidden");
       });
 
@@ -459,12 +473,32 @@ export default function Home() {
     }
 
     const svg = d3.select(svgRef.current);
+    const isFocusActive = !!focusedNodeId;
 
-    // Update all nodes with smooth transitions
+    // Helper to check if a node is connected to the focused node
+    const isConnected = (nodeId: string) => {
+      if (!isFocusActive || !focusedNodeId) return false;
+      if (nodeId === focusedNodeId) return true;
+      return graphState.links.some(
+        (link) => {
+          const s = toNodeId(link.source);
+          const t = toNodeId(link.target);
+          return (s === focusedNodeId && t === nodeId) || (t === focusedNodeId && s === nodeId);
+        }
+      );
+    };
+
+    // Update nodes opacity
     svg.selectAll("g.graph-node")
+      .transition()
+      .duration(300)
+      .style("opacity", (node: ApiGraphNode) => {
+        if (!isFocusActive) return 1;
+        return isConnected(node.id) ? 1 : 0.1;
+      })
       .select("circle")
       .transition()
-      .duration(600)
+      .duration(300) // Match opacity duration
       .ease(d3.easeQuadOut)
       .attr("r", (node: ApiGraphNode) => (node.id === selectedNodeId ? 32 : 26))
       .attr("fill", (node: ApiGraphNode) => {
@@ -487,7 +521,30 @@ export default function Home() {
           ? "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))"
           : "none";
       });
-  }, [selectedNodeId, isAuthenticated, isD3Loaded, hasOutgoingLinks]);
+
+    // Update links opacity
+    svg.selectAll("g.zoom-container line")
+      .transition()
+      .duration(300)
+      .style("opacity", (link: ApiGraphLink) => {
+        if (!isFocusActive) return 0.6;
+        const s = toNodeId(link.source);
+        const t = toNodeId(link.target);
+        return (s === focusedNodeId || t === focusedNodeId) ? 1 : 0.1;
+      })
+      .attr("stroke", (link: ApiGraphLink) => {
+        if (!isFocusActive) return "#404040";
+        const s = toNodeId(link.source);
+        const t = toNodeId(link.target);
+        return (s === focusedNodeId || t === focusedNodeId) ? "#a855f7" : "#404040";
+      });
+
+    // Hide tooltip if focus is active
+    if (isFocusActive) {
+      d3.select("body").select(".graph-tooltip").style("visibility", "hidden");
+    }
+
+  }, [selectedNodeId, focusedNodeId, isAuthenticated, isD3Loaded, hasOutgoingLinks, graphState.links]);
 
   if (isAuthChecking) {
     return (
