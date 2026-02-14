@@ -215,18 +215,43 @@ export default function Home() {
 
     nodeSelection
       .append("text")
-      .text((node: ApiGraphNode) => {
-        if (node.label.length <= 10) {
-          return node.label;
-        }
-        return `${node.label.slice(0, 12)}...`;
-      })
       .attr("fill", "#f5f5f5")
-      .attr("font-size", 11)
+      .attr("font-size", 9)
       .attr("font-weight", 600)
       .attr("text-anchor", "middle")
-      .attr("dy", "0.35em")
-      .attr("pointer-events", "none");
+      .attr("pointer-events", "none")
+      .each(function (this: SVGTextElement, node: ApiGraphNode) {
+        const text = d3.select(this);
+        const words = node.label.split(/\s+/);
+        const maxCharsPerLine = 12;
+        const lines: string[] = [];
+        let currentLine = "";
+
+        // Build lines that fit within character limit
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          if (testLine.length <= maxCharsPerLine) {
+            currentLine = testLine;
+          } else {
+            if (currentLine) lines.push(currentLine);
+            currentLine = word;
+          }
+        }
+        if (currentLine && lines.length < 2) lines.push(currentLine);
+
+        // Limit to 2 lines with ellipsis
+        if (lines.length > 2 || (lines.length === 2 && currentLine && currentLine !== lines[1])) {
+          lines[1] = lines[1].slice(0, 9) + "...";
+        }
+
+        // Create tspan for each line
+        lines.slice(0, 2).forEach((line, i) => {
+          text.append("tspan")
+            .attr("x", 0)
+            .attr("dy", i === 0 ? "-0.3em" : "1.1em")
+            .text(line);
+        });
+      });
 
     const simulation = d3
       .forceSimulation(simulationNodes)
@@ -394,7 +419,7 @@ export default function Home() {
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0ea5e9] to-[#f59e0b] flex items-center justify-center shadow-lg">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-lg">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
@@ -427,7 +452,7 @@ export default function Home() {
                   value={seedInput}
                   onChange={(event) => setSeedInput(event.target.value)}
                   placeholder="Enter arXiv ID or URL (e.g., 1706.03762)"
-                  className="input-primary w-full pl-10"
+                  className="input-primary w-full !pl-10"
                 />
               </div>
               <button
