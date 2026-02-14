@@ -267,7 +267,7 @@ def build_root_node(paper_id: str, paper: dict[str, Any]) -> GraphNode:
         url=url,
         published=published,
         authors=authors,
-        summary=summary,
+        summary=summary,    
         is_root=True,
     )
 
@@ -486,26 +486,58 @@ async def graph_search(
     return results
 
 
-# old endpoint just use /graph
-@app.get("/paper")
-async def get_paper(link: str = Query(..., description="arXiv paper link or ID")):
-    paper_id = canonicalize_paper_id(link)
+class PaperSearchResult(BaseModel):
+    arxiv_id: str
+    title: str
+    url: str
+    summary: str
+    authors: list[str] = Field(default_factory=list)
+    published: str = ""
 
-    try:
-        result = await fetch_arxiv_paper(paper_id)
-    except (httpx.HTTPError, ET.ParseError) as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch paper: {exc}")
 
-    if not result:
-        raise HTTPException(status_code=404, detail=f"No paper found for ID '{paper_id}'")
-
-    try:
-        result["references"] = await fetch_references(paper_id)
-    except httpx.HTTPError as exc:
-        result["references"] = []
-        result["references_error"] = f"Failed to fetch references: {exc}"
-
-    return result
+@app.get("/paper", response_model=list[PaperSearchResult])
+async def search_papers(
+    q: str = Query(..., description="Natural language search query"),
+    max_results: int = Query(10, ge=1, le=50, description="Maximum number of results")
+):
+    """Search arXiv papers using natural language queries."""
+    # arXiv search API uses search_query parameter
+    params = {
+        "search_query": f"all:{q}",  # search across all fields
+        "max_results": max_results,
+        "sortBy": "relevance",
+        "sortOrder": "descending"
+    }
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(ARXIV_API_URL, params=params)
+    
+    response.raise_for_status()
+    root = ET.fromstring(response.text)
+    
+    results = []
+    for entry in root.findall("atom:entry", ATOM_NS):
+        entry_id = normalize_whitespace(entry.findtext("atom:id", default="", namespaces=ATOM_NS))
+        # Extract arXiv ID from URL
+        arxiv_id = entry_id.split("/abs/")[-1].split("v")[0] if "/abs/" in entry_id else entry_id
+        
+        title = normalize_whitespace(entry.findtext("atom:title", default="", namespaces=ATOM_NS))
+        if not title or title.startswith("Error"):
+            continue
+            
+        results.append(PaperSearchResult(
+            arxiv_id=arxiv_id,
+            title=title,
+            url=entry_id,
+            summary=normalize_whitespace(entry.findtext("atom:summary", default="", namespaces=ATOM_NS)),
+            authors=[
+                normalize_whitespace(a.findtext("atom:name", default="", namespaces=ATOM_NS))
+                for a in entry.findall("atom:author", ATOM_NS)
+            ],
+            published=normalize_whitespace(entry.findtext("atom:published", default="", namespaces=ATOM_NS))
+        ))
+    
+    return results
 
 
 if __name__ == "__main__":

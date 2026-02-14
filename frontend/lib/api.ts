@@ -103,9 +103,19 @@ const requestJson = async <T>(
   path: string,
   params: Record<string, string>,
 ): Promise<T> => {
+  const headers: Record<string, string> = { Accept: "application/json" };
+
+  // Add Authorization header if token is available
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+
   const response = await fetch(buildUrl(path, params), {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers,
     cache: "no-store",
   });
 
