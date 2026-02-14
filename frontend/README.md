@@ -36,6 +36,9 @@ This repo includes a root `Dockerfile` for single-container deployment on Coolif
   - `/` -> Next.js (`127.0.0.1:3000`)
   - `/api/*` -> FastAPI (`127.0.0.1:8000`)
   - `/healthz` -> readiness endpoint (`200 ok`)
+- Startup sequencing:
+  - nginx starts only after Next.js and FastAPI ports are reachable
+  - container includes a Docker `HEALTHCHECK` on `/healthz`
 
 Set `NEXT_PUBLIC_FASTAPI_BASE_URL=/api` in Coolify build/runtime environment.
 Set `PORT` to the same port Coolify routes to this container (for example `8080`).
