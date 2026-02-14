@@ -1,0 +1,114 @@
+{
+  "initialNodes": [
+    {
+      "id": "hub",
+      "label": "Project Hub",
+      "content": "This is the central node. Click it to reveal the major work streams in the graph."
+    }
+  ],
+  "initialLinks": [],
+  "childrenByNodeId": {
+    "hub": {
+      "nodes": [
+        {
+          "id": "frontend",
+          "label": "Frontend",
+          "content": "Client-facing UI layer built with Next.js and TailwindCSS."
+        },
+        {
+          "id": "backend",
+          "label": "Backend",
+          "content": "Services and business logic powering APIs and data access."
+        },
+        {
+          "id": "design",
+          "label": "Design",
+          "content": "Visual language, accessibility decisions, and interaction patterns."
+        }
+      ],
+      "links": [
+        { "source": "hub", "target": "frontend" },
+        { "source": "hub", "target": "backend" },
+        { "source": "hub", "target": "design" }
+      ]
+    },
+    "frontend": {
+      "nodes": [
+        {
+          "id": "components",
+          "label": "Components",
+          "content": "Reusable UI components for buttons, cards, forms, and layout primitives."
+        },
+        {
+          "id": "state",
+          "label": "State",
+          "content": "Client state and caching strategy for responsive, interactive views."
+        }
+      ],
+      "links": [
+        { "source": "frontend", "target": "components" },
+        { "source": "frontend", "target": "state" }
+      ]
+    },
+    "backend": {
+      "nodes": [
+        {
+          "id": "api",
+          "label": "API",
+          "content": "HTTP endpoints for fetching graph data and related resources."
+        },
+        {
+          "id": "auth",
+          "label": "Auth",
+          "content": "Authentication and authorization policies for secure access."
+        }
+      ],
+      "links": [
+        { "source": "backend", "target": "api" },
+        { "source": "backend", "target": "auth" }
+      ]
+    },
+    "design": {
+      "nodes": [
+        {
+          "id": "typography",
+          "label": "Typography",
+          "content": "Type scale and reading hierarchy tuned for clarity across viewports."
+        },
+        {
+          "id": "colors",
+          "label": "Colors",
+          "content": "Semantic palette and contrast ratios for accessible UI themes."
+        }
+      ],
+      "links": [
+        { "source": "design", "target": "typography" },
+        { "source": "design", "target": "colors" }
+      ]
+    },
+    "components": {
+      "nodes": [
+        {
+          "id": "chart-node",
+          "label": "Chart Node",
+          "content": "A dedicated node component renders the graph circles, labels, and click states."
+        }
+      ],
+      "links": [
+        { "source": "components", "target": "chart-node" }
+      ]
+    },
+    "api": {
+      "nodes": [
+        {
+          "id": "schema",
+          "label": "Schema",
+          "content": "Schema contracts define node and edge shapes consumed by the UI."
+        }
+      ],
+      "links": [
+        { "source": "api", "target": "schema" }
+      ]
+    }
+  }
+}
