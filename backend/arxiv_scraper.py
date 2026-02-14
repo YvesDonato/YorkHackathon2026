@@ -1,5 +1,10 @@
 import os
 import xml.etree.ElementTree as ET
+<<<<<<< HEAD
+import logging
+from contextlib import asynccontextmanager
+=======
+>>>>>>> parent of 0f7f4a2... added: db connection, auth, embedding model
 from typing import Any
 
 import httpx
@@ -7,7 +12,40 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+<<<<<<< HEAD
+from auth import router as auth_router, validate_auth_config
+from database import close_db, connect_db, get_db
+from papers import router as papers_router
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage database connection lifecycle."""
+    try:
+        logger.info("Validating authentication configuration")
+        validate_auth_config()
+
+        logger.info("Connecting database and running startup initialization")
+        await connect_db()
+        logger.info("Backend startup complete")
+    except Exception:
+        logger.exception("Backend startup failed")
+        raise
+
+    try:
+        yield
+    finally:
+        logger.info("Closing database connection")
+        await close_db()
+        logger.info("Backend shutdown complete")
+
+
+app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
+=======
 app = FastAPI(title="arXiv Paper API")
+>>>>>>> parent of 0f7f4a2... added: db connection, auth, embedding model
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
@@ -24,6 +62,13 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+@app.get("/healthz")
+async def healthz():
+    if get_db() is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    return {"status": "ok"}
 
 
 class GraphNode(BaseModel):
