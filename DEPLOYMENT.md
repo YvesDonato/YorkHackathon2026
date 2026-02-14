@@ -20,6 +20,8 @@ Notes:
 
 - Backend startup is fail-fast: missing/invalid MongoDB or JWT settings make the
   backend container unhealthy by design.
+- Compose now enforces required backend env vars during interpolation. If one is
+  missing, deployment fails immediately with a clear message.
 - `FRONTEND_ORIGIN` controls backend CORS allow-list.
 - `NEXT_PUBLIC_FASTAPI_BASE_URL` is public and embedded into the frontend build.
 - `BACKEND_INTERNAL_URL` is used by Next.js rewrite/proxy to reach backend over the
@@ -30,7 +32,17 @@ Optional backend environment variables:
 - `ACCESS_TOKEN_EXPIRE_MINUTES=1440`
 - `OPENAI_API_KEY=<optional>`
 
-## 2. Coolify Setup
+## 2. Preflight Checklist (Before Deploy)
+
+1. Confirm required env vars are present and non-empty in Coolify:
+   - `MONGODB_URI`
+   - `MONGODB_DB_NAME`
+   - `JWT_SECRET_KEY`
+2. Confirm Atlas network access allows your Coolify host outbound IP.
+3. Confirm Mongo user permissions include index creation on target DB.
+4. Confirm Mongo URI points to the intended cluster and auth database.
+
+## 3. Coolify Setup
 
 1. Create a new application from this repository.
 2. Select **Docker Compose** as the deployment type.
@@ -50,33 +62,35 @@ Important:
 - If backend is unhealthy after deploy, open backend logs first; startup now emits
   explicit config/connection errors.
 
-## 3. Local Validation
+## 4. Local Validation
 
 Use these commands from repo root:
 
 ```bash
-docker compose config
-docker compose build
-docker compose up -d
+cp .env.example .env
+# Replace placeholder values in .env with real credentials before continuing.
+docker compose --env-file .env config
+docker compose --env-file .env build
+docker compose --env-file .env up -d
 ```
 
 Smoke tests:
 
 ```bash
-docker compose exec -T backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/openapi.json').status)"
-docker compose exec -T backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/healthz').status)"
-docker compose exec -T backend python -c "import urllib.request, json; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/graph?link=1706.03762')); print(data.get('seed_id'), len(data.get('nodes', [])), len(data.get('links', [])))"
-docker compose exec -T frontend node -e "fetch('http://127.0.0.1:80').then(async (r) => { console.log(r.status, (await r.text()).length); })"
-docker compose exec -T frontend node -e "fetch('http://127.0.0.1:80/api/openapi.json').then(async (r) => { console.log(r.status, (await r.text()).length); })"
+docker compose --env-file .env exec -T backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/openapi.json').status)"
+docker compose --env-file .env exec -T backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/healthz').status)"
+docker compose --env-file .env exec -T backend python -c "import urllib.request, json; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/graph?link=1706.03762')); print(data.get('seed_id'), len(data.get('nodes', [])), len(data.get('links', [])))"
+docker compose --env-file .env exec -T frontend node -e "fetch('http://127.0.0.1:80').then(async (r) => { console.log(r.status, (await r.text()).length); })"
+docker compose --env-file .env exec -T frontend node -e "fetch('http://127.0.0.1:80/api/openapi.json').then(async (r) => { console.log(r.status, (await r.text()).length); })"
 ```
 
 Stop services:
 
 ```bash
-docker compose down
+docker compose --env-file .env down
 ```
 
-## 4. Backend Unhealthy Triage
+## 5. Backend Unhealthy Triage
 
 If Coolify reports backend as unhealthy:
 
@@ -89,3 +103,12 @@ If Coolify reports backend as unhealthy:
 4. Re-check backend logs for startup errors:
    - missing env var
    - MongoDB connection/auth errors
+
+Common log patterns:
+
+| Log excerpt | Likely cause | Action |
+| --- | --- | --- |
+| `Missing required environment variable: JWT_SECRET_KEY` | Missing secret in Coolify env | Add `JWT_SECRET_KEY` and redeploy |
+| `Missing required environment variable: MONGODB_URI` | Missing Mongo URI | Add `MONGODB_URI` and redeploy |
+| `MongoDB initialization failed (ServerSelectionTimeoutError)` | Atlas not reachable (network/DNS/firewall) | Allow Coolify host IP, verify URI/hostname |
+| `MongoDB initialization failed (OperationFailure)` during index creation | Mongo user lacks required permissions | Grant `readWrite`/index privileges on target DB |
