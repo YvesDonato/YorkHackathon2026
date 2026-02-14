@@ -63,8 +63,8 @@ export default function SignupPage() {
 
             // Redirect to main page
             window.location.href = '/';
-        } catch (err) {
-            setError("Signup failed. Please try again.");
+        } catch (err: any) {
+            setError(err.message || "Signup failed. Please try again.");
         } finally {
             setIsLoading(false);
         }

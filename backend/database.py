@@ -2,13 +2,14 @@ import os
 import logging
 import asyncio
 from dotenv import load_dotenv
+import certifi
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import OperationFailure, PyMongoError, ServerSelectionTimeoutError
 
 load_dotenv()
 
 client: AsyncIOMotorClient = None  # type: ignore
-db = None
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,12 @@ async def connect_db():
 
     for attempt in range(1, retries + 1):
         logger.info("MongoDB preflight: connect attempt %s/%s", attempt, retries)
-        client = AsyncIOMotorClient(mongodb_uri, serverSelectionTimeoutMS=10000)
+        client = AsyncIOMotorClient(
+            mongodb_uri,
+            serverSelectionTimeoutMS=10000,
+            tlsCAFile=certifi.where(),
+            tlsAllowInvalidCertificates=True
+        )
         db = client[db_name]
 
         try:
