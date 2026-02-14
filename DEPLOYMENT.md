@@ -21,7 +21,7 @@ Notes:
 - Backend startup is fail-fast: missing/invalid MongoDB or JWT settings make the
   backend container unhealthy by design.
 - Compose now enforces required backend env vars during interpolation. If one is
-  missing, deployment fails immediately with a clear message.
+  missing or empty, deployment fails immediately with a clear message.
 - `FRONTEND_ORIGIN` controls backend CORS allow-list.
 - `NEXT_PUBLIC_FASTAPI_BASE_URL` is public and embedded into the frontend build.
 - `BACKEND_INTERNAL_URL` is used by Next.js rewrite/proxy to reach backend over the

@@ -5,9 +5,9 @@ services:
       dockerfile: Dockerfile
     environment:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
-      MONGODB_URI: ${MONGODB_URI?MONGODB_URI is required}
-      MONGODB_DB_NAME: ${MONGODB_DB_NAME?MONGODB_DB_NAME is required}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY?JWT_SECRET_KEY is required}
+      MONGODB_URI: ${MONGODB_URI:?MONGODB_URI is required}
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:?MONGODB_DB_NAME is required}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     restart: unless-stopped
