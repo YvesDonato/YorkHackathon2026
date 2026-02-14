@@ -9,6 +9,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from routes.audio import router as audio_router
 
 from auth import get_current_user, router as auth_router, validate_auth_config
 from database import close_db, connect_db, get_db
@@ -52,6 +53,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router)
+app.include_router(audio_router)
 
 
 @app.get("/healthz")
