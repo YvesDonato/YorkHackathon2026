@@ -1,5 +1,25 @@
-export const FASTAPI_BASE_URL =
-  process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "/api";
+const LOCALHOST_HTTP_URL_PATTERN =
+  /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(:\d+)?(\/|$)/i;
+
+const getFastApiBaseUrl = (): string => {
+  const configuredBaseUrl = (process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "/api").trim();
+  if (!configuredBaseUrl) {
+    return "/api";
+  }
+
+  // Guard against accidental production deployments that still embed localhost.
+  if (typeof window !== "undefined") {
+    const browserHost = window.location.hostname.toLowerCase();
+    const isBrowserLocalhost = browserHost === "localhost" || browserHost === "127.0.0.1";
+    if (LOCALHOST_HTTP_URL_PATTERN.test(configuredBaseUrl) && !isBrowserLocalhost) {
+      return "/api";
+    }
+  }
+
+  return configuredBaseUrl;
+};
+
+export const FASTAPI_BASE_URL = getFastApiBaseUrl();
 
 export type ApiGraphNode = {
   id: string;
@@ -45,7 +65,7 @@ export type PaperResponse = {
 };
 
 const buildUrl = (path: string, params: Record<string, string>): string => {
-  const baseUrl = FASTAPI_BASE_URL.replace(/\/+$/, "");
+  const baseUrl = getFastApiBaseUrl().replace(/\/+$/, "");
   const normalizedPath = path.replace(/^\/+/, "");
 
   if (/^https?:\/\//i.test(baseUrl)) {

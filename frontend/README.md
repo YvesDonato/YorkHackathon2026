@@ -7,7 +7,13 @@ This frontend renders an arXiv reference graph and shows clicked node details in
 Set the FastAPI base URL in `.env.local`:
 
 ```bash
-NEXT_PUBLIC_FASTAPI_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_FASTAPI_BASE_URL=/api
+```
+
+Optional (used by Next.js rewrite/proxy target):
+
+```bash
+BACKEND_INTERNAL_URL=http://localhost:8000
 ```
 
 ## Run
