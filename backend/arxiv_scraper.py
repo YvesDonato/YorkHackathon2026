@@ -1,16 +1,22 @@
 import os
 import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from auth import router as auth_router
-from database import close_db, connect_db
-from papers import router as papers_router
+from auth import get_current_user, router as auth_router
+from database import close_db, connect_db, get_db
+from papers import (
+    cosine_similarity,
+    generate_embedding,
+    generate_embeddings_batch,
+    router as papers_router,
+)
 
 
 @asynccontextmanager
@@ -58,6 +64,7 @@ class GraphNode(BaseModel):
 class GraphLink(BaseModel):
     source: str
     target: str
+    similarity: float | None = None
 
 
 class GraphResponse(BaseModel):
@@ -289,11 +296,14 @@ def build_reference_node(reference: dict[str, Any]) -> GraphNode | None:
 
 
 @app.get("/graph", response_model=GraphResponse)
-async def get_graph(link: str = Query(..., description="Seed arXiv paper link or ID")):
+async def get_graph(
+    link: str = Query(..., description="Seed arXiv paper link or ID"),
+    current_user: dict = Depends(get_current_user),
+):
     """Return a citation graph for a seed paper.
 
-    If reference enrichment fails (for example due to API rate limits), this endpoint
-    still returns HTTP 200 with a root-only graph and warning metadata.
+    All papers are embedded via Gemini, stored in graph_papers, and linked to
+    the current user.  Similarity scores are computed between every node pair.
     """
     paper_id = canonicalize_paper_id(link)
     if not paper_id:
@@ -314,25 +324,85 @@ async def get_graph(link: str = Query(..., description="Seed arXiv paper link or
     except (httpx.HTTPError, ET.ParseError) as exc:
         references_error = summarize_references_error(exc)
 
+    # ── Build nodes ──────────────────────────────────────────────────────
     root_node = build_root_node(paper_id, seed_paper)
     nodes = [root_node]
-    links: list[GraphLink] = []
     seen_node_ids = {root_node.id}
-    seen_link_keys: set[tuple[str, str]] = set()
 
     for reference in references:
         node = build_reference_node(reference)
         if node is None or node.id == root_node.id:
             continue
-
         if node.id not in seen_node_ids:
             nodes.append(node)
             seen_node_ids.add(node.id)
 
-        link_key = (root_node.id, node.id)
-        if link_key not in seen_link_keys:
-            links.append(GraphLink(source=root_node.id, target=node.id))
-            seen_link_keys.add(link_key)
+    # ── Generate embeddings for all nodes in one batch ───────────────────
+    summaries = [n.summary or n.content for n in nodes]
+    try:
+        embeddings = await generate_embeddings_batch(summaries)
+    except Exception:
+        # If embedding fails, fall back to citation-only graph
+        embeddings = []
+
+    # Map node id -> embedding for similarity computation
+    node_embeddings: dict[str, list[float]] = {}
+    for node, emb in zip(nodes, embeddings):
+        node_embeddings[node.id] = emb
+
+    # ── Persist to DB (graph_papers + user junction) ─────────────────────
+    db = get_db()
+    user_id = str(current_user["_id"])
+    now = datetime.now(timezone.utc)
+
+    for node, emb in (zip(nodes, embeddings) if embeddings else []):
+        # Upsert into shared graph_papers collection
+        await db.graph_papers.update_one(
+            {"arxiv_id": node.id},
+            {
+                "$set": {
+                    "title": node.label,
+                    "summary": node.summary,
+                    "url": node.url,
+                    "authors": node.authors,
+                    "published": node.published or "",
+                    "embedding": emb,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {"created_at": now},
+            },
+            upsert=True,
+        )
+        # Link user ↔ paper in the junction collection
+        await db.user_graph_papers.update_one(
+            {"user_id": user_id, "arxiv_id": node.id},
+            {"$setOnInsert": {"user_id": user_id, "arxiv_id": node.id, "added_at": now}},
+            upsert=True,
+        )
+
+    # ── Build links with similarity scores ───────────────────────────────
+    links: list[GraphLink] = []
+    seen_link_keys: set[tuple[str, str]] = set()
+
+    # Citation links (root → each reference)
+    for node in nodes[1:]:
+        key = (root_node.id, node.id)
+        if key not in seen_link_keys:
+            sim = None
+            if root_node.id in node_embeddings and node.id in node_embeddings:
+                sim = round(cosine_similarity(node_embeddings[root_node.id], node_embeddings[node.id]), 4)
+            links.append(GraphLink(source=root_node.id, target=node.id, similarity=sim))
+            seen_link_keys.add(key)
+
+    # Similarity links between all non-root node pairs
+    if node_embeddings:
+        for i in range(1, len(nodes)):
+            for j in range(i + 1, len(nodes)):
+                key = (nodes[i].id, nodes[j].id)
+                if key not in seen_link_keys:
+                    sim = round(cosine_similarity(node_embeddings[nodes[i].id], node_embeddings[nodes[j].id]), 4)
+                    links.append(GraphLink(source=nodes[i].id, target=nodes[j].id, similarity=sim))
+                    seen_link_keys.add(key)
 
     return GraphResponse(
         seed_id=root_node.id,
@@ -341,6 +411,55 @@ async def get_graph(link: str = Query(..., description="Seed arXiv paper link or
         partial_data=references_error is not None,
         references_error=references_error,
     )
+
+
+class GraphSearchResult(BaseModel):
+    arxiv_id: str
+    title: str
+    summary: str
+    url: str
+    authors: list[str] = Field(default_factory=list)
+    published: str = ""
+    similarity_score: float | None = None
+
+
+@app.get("/graph/search", response_model=list[GraphSearchResult])
+async def graph_search(
+    q: str = Query(..., description="Search query"),
+    limit: int = Query(10, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+):
+    """Semantic search over all graph papers using Atlas Vector Search."""
+    query_embedding = await generate_embedding(q)
+    db = get_db()
+
+    pipeline = [
+        {
+            "$vectorSearch": {
+                "index": "graph_vector_index",
+                "path": "embedding",
+                "queryVector": query_embedding,
+                "numCandidates": limit * 10,
+                "limit": limit,
+            }
+        },
+        {"$addFields": {"score": {"$meta": "vectorSearchScore"}}},
+    ]
+
+    results = []
+    async for doc in db.graph_papers.aggregate(pipeline):
+        results.append(
+            GraphSearchResult(
+                arxiv_id=doc["arxiv_id"],
+                title=doc["title"],
+                summary=doc.get("summary", ""),
+                url=doc.get("url", ""),
+                authors=doc.get("authors", []),
+                published=doc.get("published", ""),
+                similarity_score=doc.get("score"),
+            )
+        )
+    return results
 
 
 @app.get("/paper")

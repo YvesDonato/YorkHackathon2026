@@ -6,3 +6,4 @@ pymongo[srv]
 passlib[bcrypt]
 python-jose[cryptography]
 pydantic[email]
+google-genai

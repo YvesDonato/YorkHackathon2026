@@ -25,6 +25,13 @@ async def connect_db():
     await db.papers.create_index("arxiv_id")
     await db.papers.create_index([("user_id", 1), ("arxiv_id", 1)], unique=True)
 
+    # Graph papers (shared/global) – keyed by arxiv_id
+    await db.graph_papers.create_index("arxiv_id", unique=True)
+
+    # Junction: which users have explored which graph papers
+    await db.user_graph_papers.create_index([("user_id", 1), ("arxiv_id", 1)], unique=True)
+    await db.user_graph_papers.create_index("user_id")
+
 
 async def close_db():
     global client

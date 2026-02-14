@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 
-import httpx
+from google import genai
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,10 +12,12 @@ from database import get_db
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-OPENAI_API_URL = "https://api.openai.com/v1/embeddings"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-EMBEDDING_MODEL = "text-embedding-3-small"  # 1536 dimensions
-EMBEDDING_DIMENSIONS = 1536
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+EMBEDDING_MODEL = "gemini-embedding-001"  # 3072 dimensions
+EMBEDDING_DIMENSIONS = 3072
+
+# Initialize Gemini client
+genai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 # ---------------------------------------------------------------------------
 # Pydantic schemas
@@ -46,27 +48,52 @@ class PaperOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 async def generate_embedding(text: str) -> list[float]:
-    """Generate an embedding vector for the given text using OpenAI."""
-    if not OPENAI_API_KEY:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
+    """Generate an embedding vector for the given text using Google Gemini."""
+    if not genai_client:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            OPENAI_API_URL,
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={
-                "model": EMBEDDING_MODEL,
-                "input": text,
-                "dimensions": EMBEDDING_DIMENSIONS,
-            },
+    try:
+        result = genai_client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=[text]
         )
-    if response.status_code != 200:
+        # Return the first (and only) embedding's values
+        return result.embeddings[0].values
+    except Exception as e:
         raise HTTPException(
             status_code=502,
-            detail=f"OpenAI embedding request failed: {response.text}",
+            detail=f"Gemini embedding request failed: {str(e)}",
         )
-    data = response.json()
-    return data["data"][0]["embedding"]
+
+
+async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
+    """Generate embedding vectors for multiple texts in a single Gemini API call."""
+    if not genai_client:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
+    if not texts:
+        return []
+
+    try:
+        result = genai_client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=texts
+        )
+        return [e.values for e in result.embeddings]
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gemini batch embedding request failed: {str(e)}",
+        )
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 # ---------------------------------------------------------------------------
@@ -147,20 +174,6 @@ async def get_my_papers(current_user: dict = Depends(get_current_user)):
 async def find_similar_papers(paper_id: str, limit: int = 10, current_user: dict = Depends(get_current_user)):
     """
     Find papers with similar summaries using MongoDB Atlas Vector Search.
-
-    PREREQUISITE: You must create a Vector Search index in MongoDB Atlas:
-      - Index name: "vector_index"
-      - Collection: "papers"
-      - Field mapping:
-        {
-          "type": "vectorSearch",
-          "fields": [{
-            "type": "vector",
-            "path": "embedding",
-            "numDimensions": 1536,
-            "similarity": "cosine"
-          }]
-        }
     """
     db = get_db()
     user_id = str(current_user["_id"])
