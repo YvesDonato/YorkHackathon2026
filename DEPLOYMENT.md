@@ -22,6 +22,8 @@ Notes:
   backend container unhealthy by design.
 - Compose now enforces required backend env vars during interpolation. If one is
   missing or empty, deployment fails immediately with a clear message.
+- Backend retries Mongo connectivity a limited number of times (`MONGODB_CONNECT_*`)
+  before failing startup.
 - `FRONTEND_ORIGIN` controls backend CORS allow-list.
 - `NEXT_PUBLIC_FASTAPI_BASE_URL` is public and embedded into the frontend build.
 - `BACKEND_INTERNAL_URL` is used by Next.js rewrite/proxy to reach backend over the
@@ -31,6 +33,9 @@ Optional backend environment variables:
 
 - `ACCESS_TOKEN_EXPIRE_MINUTES=1440`
 - `OPENAI_API_KEY=<optional>`
+- `MONGODB_ENSURE_INDEXES=true` (default strict mode)
+- `MONGODB_CONNECT_RETRIES=3`
+- `MONGODB_CONNECT_RETRY_DELAY_SECONDS=3`
 
 ## 2. Preflight Checklist (Before Deploy)
 
@@ -41,6 +46,9 @@ Optional backend environment variables:
 2. Confirm Atlas network access allows your Coolify host outbound IP.
 3. Confirm Mongo user permissions include index creation on target DB.
 4. Confirm Mongo URI points to the intended cluster and auth database.
+5. If diagnosing deploy failures, you can temporarily set:
+   - `MONGODB_ENSURE_INDEXES=false`
+   This isolates index-permission issues from connectivity/auth issues.
 
 ## 3. Coolify Setup
 
@@ -103,12 +111,15 @@ If Coolify reports backend as unhealthy:
 4. Re-check backend logs for startup errors:
    - missing env var
    - MongoDB connection/auth errors
+5. If logs show index failures, temporarily set `MONGODB_ENSURE_INDEXES=false`,
+   redeploy to confirm connectivity/auth are healthy, then re-enable `true` after
+   fixing MongoDB permissions.
 
 Common log patterns:
 
 | Log excerpt | Likely cause | Action |
 | --- | --- | --- |
-| `Missing required environment variable: JWT_SECRET_KEY` | Missing secret in Coolify env | Add `JWT_SECRET_KEY` and redeploy |
-| `Missing required environment variable: MONGODB_URI` | Missing Mongo URI | Add `MONGODB_URI` and redeploy |
-| `MongoDB initialization failed (ServerSelectionTimeoutError)` | Atlas not reachable (network/DNS/firewall) | Allow Coolify host IP, verify URI/hostname |
-| `MongoDB initialization failed (OperationFailure)` during index creation | Mongo user lacks required permissions | Grant `readWrite`/index privileges on target DB |
+| `DB_CONFIG_ERROR: ...` | Missing/invalid backend DB/auth config | Fix required env values and redeploy |
+| `DB_CONNECT_ERROR: ...` | Atlas not reachable/network issue | Verify URI hostname and Atlas IP/network rules |
+| `DB_AUTH_ERROR: ...` | Mongo auth/credentials issue | Verify username/password/auth source in URI |
+| `DB_INDEX_ERROR: ...` | Mongo user lacks index permissions | Grant index/createIndex permissions and redeploy |
