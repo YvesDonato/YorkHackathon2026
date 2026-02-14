@@ -1,5 +1,6 @@
 import os
 import xml.etree.ElementTree as ET
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -7,7 +8,20 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="arXiv Paper API")
+from auth import router as auth_router
+from database import close_db, connect_db
+from papers import router as papers_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage database connection lifecycle."""
+    await connect_db()
+    yield
+    await close_db()
+
+
+app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
@@ -20,10 +34,14 @@ FRONTEND_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET"],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(auth_router)
+app.include_router(papers_router)
 
 
 class GraphNode(BaseModel):
