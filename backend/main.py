@@ -461,17 +461,6 @@ async def _generate_graph_internal(
     links: list[GraphLink] = []
     seen_link_keys: set[tuple[str, str]] = set()
 
-    # Direct links from root to each discovered paper (with similarity)
-    for node in nodes[1:]:
-        key = (root_node.id, node.id)
-        if key not in seen_link_keys:
-            sim = None
-            if root_node.id in node_embeddings and node.id in node_embeddings:
-                sim = round(cosine_similarity(node_embeddings[root_node.id], node_embeddings[node.id]), 4)
-            links.append(GraphLink(source=root_node.id, target=node.id, similarity=sim))
-            seen_link_keys.add(key)
-
-    # k-NN similarity links between all nodes
     if node_embeddings:
         for i, node_a in enumerate(nodes):
             if node_a.id not in node_embeddings:
@@ -673,21 +662,6 @@ async def get_session(
     links: list[GraphLink] = []
     seen_link_keys: set[tuple[str, str]] = set()
 
-    # Direct links from seed to all other papers
-    seed_node = next((n for n in nodes if n.is_root), None)
-    if seed_node:
-        for node in nodes:
-            if node.id == seed_node.id:
-                continue
-            key = (seed_node.id, node.id)
-            if key not in seen_link_keys:
-                sim = None
-                if seed_node.id in node_embeddings and node.id in node_embeddings:
-                    sim = round(cosine_similarity(node_embeddings[seed_node.id], node_embeddings[node.id]), 4)
-                links.append(GraphLink(source=seed_node.id, target=node.id, similarity=sim))
-                seen_link_keys.add(key)
-
-    # k-NN similarity links between all nodes
     if node_embeddings:
         for i, node_a in enumerate(nodes):
             if node_a.id not in node_embeddings:
