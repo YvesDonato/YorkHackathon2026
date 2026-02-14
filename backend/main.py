@@ -90,6 +90,26 @@ class GraphResponse(BaseModel):
     references_error: str | None = None
 
 
+class SessionCreate(BaseModel):
+    seed_paper_link: str
+    mode: str = "grounding"
+    title: str | None = None
+
+
+class SessionUpdate(BaseModel):
+    title: str | None = None
+
+
+class SessionResponse(BaseModel):
+    id: str
+    user_id: str
+    title: str | None
+    seed_paper_id: str
+    mode: str
+    created_at: str
+    last_accessed: str
+
+
 def normalize_whitespace(value: str) -> str:
     return " ".join(value.split())
 
@@ -309,22 +329,14 @@ def build_reference_node(reference: dict[str, Any]) -> GraphNode | None:
     )
 
 
-@app.get("/graph", response_model=GraphResponse)
-async def get_graph(
-    link: str = Query(..., description="Seed arXiv paper link or ID"),
-    mode: str = Query("grounding", description="Discovery mode: 'grounding' (Google Search) or 'references' (Semantic Scholar)"),
-    current_user: dict = Depends(get_current_user),
-):
-    """Return a similarity graph for a seed paper.
-
-    Supports two discovery modes:
-    - **grounding**: Uses Google Search grounding via Gemini to find similar papers.
-    - **references**: Uses Semantic Scholar to fetch cited references.
+async def _generate_graph_internal(
+    paper_id: str,
+    mode: str,
+) -> tuple[GraphResponse, list[GraphNode], list[list[float]]]:
+    """Internal helper to generate a graph for a given paper.
+    
+    Returns (GraphResponse, nodes, embeddings) for use by session creation.
     """
-    paper_id = canonicalize_paper_id(link)
-    if not paper_id:
-        raise HTTPException(status_code=422, detail="A valid arXiv link or ID is required")
-
     if mode not in ("grounding", "references"):
         raise HTTPException(status_code=422, detail="mode must be 'grounding' or 'references'")
 
@@ -422,9 +434,8 @@ async def get_graph(
     for node, emb in zip(nodes, embeddings):
         node_embeddings[node.id] = emb
 
-    # ── Persist to DB (graph_papers + user junction) ─────────────────────
+    # ── Persist papers to global graph_papers ─────────────────────────────
     db = get_db()
-    user_id = str(current_user["_id"])
     now = datetime.now(timezone.utc)
 
     for node, emb in (zip(nodes, embeddings) if embeddings else []):
@@ -442,11 +453,6 @@ async def get_graph(
                 },
                 "$setOnInsert": {"created_at": now},
             },
-            upsert=True,
-        )
-        await db.user_graph_papers.update_one(
-            {"user_id": user_id, "arxiv_id": node.id},
-            {"$setOnInsert": {"user_id": user_id, "arxiv_id": node.id, "added_at": now}},
             upsert=True,
         )
 
@@ -483,13 +489,37 @@ async def get_graph(
                     links.append(GraphLink(source=node_a.id, target=nodes[j].id, similarity=round(sim, 4)))
                     seen_link_keys.add(key)
 
-    return GraphResponse(
+    graph_response = GraphResponse(
         seed_id=root_node.id,
         nodes=nodes,
         links=links,
         partial_data=discovery_error is not None,
         references_error=discovery_error,
     )
+    
+    return graph_response, nodes, embeddings
+
+
+@app.get("/graph", response_model=GraphResponse)
+async def get_graph(
+    link: str = Query(..., description="Seed arXiv paper link or ID"),
+    mode: str = Query("grounding", description="Discovery mode: 'grounding' (Google Search) or 'references' (Semantic Scholar)"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Return a similarity graph for a seed paper.
+
+    Supports two discovery modes:
+    - **grounding**: Uses Google Search grounding via Gemini to find similar papers.
+    - **references**: Uses Semantic Scholar to fetch cited references.
+    
+    DEPRECATED: Use POST /sessions to create a session-based graph instead.
+    """
+    paper_id = canonicalize_paper_id(link)
+    if not paper_id:
+        raise HTTPException(status_code=422, detail="A valid arXiv link or ID is required")
+
+    graph_response, _, _ = await _generate_graph_internal(paper_id, mode)
+    return graph_response
 
 
 class GraphSearchResult(BaseModel):
@@ -500,6 +530,262 @@ class GraphSearchResult(BaseModel):
     authors: list[str] = Field(default_factory=list)
     published: str = ""
     similarity_score: float | None = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Session CRUD Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/sessions", response_model=SessionResponse, status_code=201)
+async def create_session(
+    session_create: SessionCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a new graph exploration session."""
+    paper_id = canonicalize_paper_id(session_create.seed_paper_link)
+    if not paper_id:
+        raise HTTPException(status_code=422, detail="A valid arXiv link or ID is required")
+
+    # Generate graph using internal helper
+    graph_response, nodes, _ = await _generate_graph_internal(paper_id, session_create.mode)
+
+    # Create session document
+    db = get_db()
+    user_id = current_user["_id"]
+    now = datetime.now(timezone.utc)
+
+    session_doc = {
+        "user_id": user_id,
+        "title": session_create.title,
+        "seed_paper_id": paper_id,
+        "mode": session_create.mode,
+        "created_at": now,
+        "last_accessed": now,
+    }
+    result = await db.sessions.insert_one(session_doc)
+    session_id = result.inserted_id
+
+    # Link all papers to this session via session_papers
+    for node in nodes:
+        await db.session_papers.insert_one({
+            "session_id": session_id,
+            "arxiv_id": node.id,
+            "is_seed": node.id == paper_id,
+            "added_at": now,
+        })
+
+    return SessionResponse(
+        id=str(session_id),
+        user_id=str(user_id),
+        title=session_create.title,
+        seed_paper_id=paper_id,
+        mode=session_create.mode,
+        created_at=now.isoformat(),
+        last_accessed=now.isoformat(),
+    )
+
+
+@app.get("/sessions", response_model=list[SessionResponse])
+async def list_sessions(
+    current_user: dict = Depends(get_current_user),
+):
+    """List all sessions for the current user."""
+    db = get_db()
+    user_id = current_user["_id"]
+
+    cursor = db.sessions.find({"user_id": user_id}).sort("last_accessed", -1)
+    sessions = await cursor.to_list(length=None)
+
+    return [
+        SessionResponse(
+            id=str(s["_id"]),
+            user_id=str(s["user_id"]),
+            title=s.get("title"),
+            seed_paper_id=s["seed_paper_id"],
+            mode=s["mode"],
+            created_at=s["created_at"].isoformat(),
+            last_accessed=s["last_accessed"].isoformat(),
+        )
+        for s in sessions
+    ]
+
+
+@app.get("/sessions/{session_id}", response_model=GraphResponse)
+async def get_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get a specific session's graph."""
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        oid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=422, detail="Invalid session ID format")
+
+    db = get_db()
+    user_id = current_user["_id"]
+
+    # Fetch session
+    session = await db.sessions.find_one({"_id": oid, "user_id": user_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Update last_accessed
+    await db.sessions.update_one(
+        {"_id": oid},
+        {"$set": {"last_accessed": datetime.now(timezone.utc)}},
+    )
+
+    # Fetch all papers in this session
+    session_paper_docs = await db.session_papers.find({"session_id": oid}).to_list(length=None)
+    arxiv_ids = [sp["arxiv_id"] for sp in session_paper_docs]
+
+    if not arxiv_ids:
+        raise HTTPException(status_code=404, detail="No papers found for this session")
+
+    # Fetch paper metadata and embeddings from graph_papers
+    paper_docs = await db.graph_papers.find({"arxiv_id": {"$in": arxiv_ids}}).to_list(length=None)
+    
+    # Build nodes
+    seed_id = session["seed_paper_id"]
+    nodes: list[GraphNode] = []
+    node_embeddings: dict[str, list[float]] = {}
+
+    for paper in paper_docs:
+        node = GraphNode(
+            id=paper["arxiv_id"],
+            label=paper["title"],
+            content=paper.get("summary", ""),
+            url=paper.get("url"),
+            published=paper.get("published"),
+            authors=paper.get("authors", []),
+            summary=paper.get("summary", ""),
+            is_root=(paper["arxiv_id"] == seed_id),
+        )
+        nodes.append(node)
+        if "embedding" in paper:
+            node_embeddings[paper["arxiv_id"]] = paper["embedding"]
+
+    # Build k-NN links
+    K_NEIGHBORS = 3
+    links: list[GraphLink] = []
+    seen_link_keys: set[tuple[str, str]] = set()
+
+    # Direct links from seed to all other papers
+    seed_node = next((n for n in nodes if n.is_root), None)
+    if seed_node:
+        for node in nodes:
+            if node.id == seed_node.id:
+                continue
+            key = (seed_node.id, node.id)
+            if key not in seen_link_keys:
+                sim = None
+                if seed_node.id in node_embeddings and node.id in node_embeddings:
+                    sim = round(cosine_similarity(node_embeddings[seed_node.id], node_embeddings[node.id]), 4)
+                links.append(GraphLink(source=seed_node.id, target=node.id, similarity=sim))
+                seen_link_keys.add(key)
+
+    # k-NN similarity links between all nodes
+    if node_embeddings:
+        for i, node_a in enumerate(nodes):
+            if node_a.id not in node_embeddings:
+                continue
+            similarities: list[tuple[int, float]] = []
+            for j, node_b in enumerate(nodes):
+                if i == j or node_b.id not in node_embeddings:
+                    continue
+                sim = cosine_similarity(node_embeddings[node_a.id], node_embeddings[node_b.id])
+                similarities.append((j, sim))
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            for j, sim in similarities[:K_NEIGHBORS]:
+                key = tuple(sorted((node_a.id, nodes[j].id)))
+                if key not in seen_link_keys:
+                    links.append(GraphLink(source=node_a.id, target=nodes[j].id, similarity=round(sim, 4)))
+                    seen_link_keys.add(key)
+
+    return GraphResponse(
+        seed_id=seed_id,
+        nodes=nodes,
+        links=links,
+        partial_data=False,
+        references_error=None,
+    )
+
+
+@app.patch("/sessions/{session_id}", response_model=SessionResponse)
+async def update_session(
+    session_id: str,
+    session_update: SessionUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update session metadata (e.g., title)."""
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        oid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=422, detail="Invalid session ID format")
+
+    db = get_db()
+    user_id = current_user["_id"]
+
+    # Fetch session
+    session = await db.sessions.find_one({"_id": oid, "user_id": user_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Update title if provided
+    update_fields = {}
+    if session_update.title is not None:
+        update_fields["title"] = session_update.title
+
+    if update_fields:
+        await db.sessions.update_one({"_id": oid}, {"$set": update_fields})
+        session.update(update_fields)
+
+    return SessionResponse(
+        id=str(session["_id"]),
+        user_id=str(session["user_id"]),
+        title=session.get("title"),
+        seed_paper_id=session["seed_paper_id"],
+        mode=session["mode"],
+        created_at=session["created_at"].isoformat(),
+        last_accessed=session["last_accessed"].isoformat(),
+    )
+
+
+@app.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete a session (removes session and session_papers links, but keeps global papers)."""
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        oid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=422, detail="Invalid session ID format")
+
+    db = get_db()
+    user_id = current_user["_id"]
+
+    # Verify ownership
+    session = await db.sessions.find_one({"_id": oid, "user_id": user_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Delete session_papers links
+    await db.session_papers.delete_many({"session_id": oid})
+
+    # Delete session
+    await db.sessions.delete_one({"_id": oid})
+
+    return None
 
 
 @app.get("/graph/search", response_model=list[GraphSearchResult])

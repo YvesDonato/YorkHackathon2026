@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-EMBEDDING_MODEL = "gemini-embedding-001"  # 3072 dimensions
-EMBEDDING_DIMENSIONS = 3072
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIMENSIONS = 768
 GROUNDING_MODEL = "gemini-2.5-flash-lite"
 
 # Initialize Gemini client
@@ -32,7 +32,10 @@ async def generate_embedding(text: str) -> list[float]:
     try:
         result = genai_client.models.embed_content(
             model=EMBEDDING_MODEL,
-            contents=[text]
+            contents=[text],
+            config=types.EmbedContentConfig(
+                output_dimensionality=EMBEDDING_DIMENSIONS,
+            ),
         )
         return result.embeddings[0].values
     except Exception as e:

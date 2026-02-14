@@ -9,7 +9,15 @@ import {
   type FormEvent,
 } from "react";
 import Script from "next/script";
-import { fetchGraph, type ApiGraphLink, type ApiGraphNode } from "@/lib/api";
+import {
+  createSession,
+  listSessions,
+  getSession,
+  deleteSession as deleteSessionApi,
+  type ApiGraphLink,
+  type ApiGraphNode,
+  type Session,
+} from "@/lib/api";
 
 declare global {
   interface Window {
@@ -42,8 +50,11 @@ export default function Home() {
   const [seedInput, setSeedInput] = useState(DEFAULT_SEED_LINK);
   const [graphState, setGraphState] = useState<GraphState>(createEmptyGraphState);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isLoadingGraph, setIsLoadingGraph] = useState(true);
+  const [isLoadingGraph, setIsLoadingGraph] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [viewport, setViewport] = useState({ width: 900, height: 560 });
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
 
@@ -68,7 +79,46 @@ export default function Home() {
     setIsAuthChecking(false);
   }, []);
 
-  const loadGraph = useCallback(async (seedLink: string) => {
+  // Load sessions on mount
+  const loadSessions = useCallback(async () => {
+    try {
+      const sessionList = await listSessions();
+      setSessions(sessionList);
+    } catch (error) {
+      console.error("Failed to load sessions:", error);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    void loadSessions();
+  }, [isAuthenticated, loadSessions]);
+
+  // Load a specific session's graph
+  const loadSessionGraph = useCallback(async (sessionId: string) => {
+    setIsLoadingGraph(true);
+    setGraphError(null);
+
+    try {
+      const response = await getSession(sessionId);
+      setGraphState({ nodes: response.nodes, links: response.links });
+      setSelectedNodeId(response.seed_id);
+      setCurrentSessionId(sessionId);
+    } catch (error) {
+      setGraphError(formatError(error));
+      setGraphState(createEmptyGraphState());
+      setSelectedNodeId(null);
+    } finally {
+      setIsLoadingGraph(false);
+    }
+  }, []);
+
+  // Create a new session
+  const createNewSession = useCallback(async (seedLink: string) => {
     const normalizedSeed = seedLink.trim();
 
     if (!normalizedSeed) {
@@ -83,24 +133,31 @@ export default function Home() {
     setGraphError(null);
 
     try {
-      const response = await fetchGraph(normalizedSeed);
-      setGraphState({ nodes: response.nodes, links: response.links });
-      setSelectedNodeId(response.seed_id);
+      const session = await createSession({ seed_paper_link: normalizedSeed, mode: "grounding" });
+      await loadSessions(); // Refresh session list
+      await loadSessionGraph(session.id); // Load the new session's graph
     } catch (error) {
       setGraphError(formatError(error));
       setGraphState(createEmptyGraphState());
       setSelectedNodeId(null);
-    } finally {
       setIsLoadingGraph(false);
     }
-  }, []);
+  }, [loadSessions, loadSessionGraph]);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
+  // Delete a session
+  const deleteSession = useCallback(async (sessionId: string) => {
+    try {
+      await deleteSessionApi(sessionId);
+      await loadSessions();
+      if (currentSessionId === sessionId) {
+        setGraphState(createEmptyGraphState());
+        setSelectedNodeId(null);
+        setCurrentSessionId(null);
+      }
+    } catch (error) {
+      console.error("Failed to delete session:", error);
     }
-    void loadGraph(DEFAULT_SEED_LINK);
-  }, [isAuthenticated, loadGraph]);
+  }, [currentSessionId, loadSessions]);
 
   const handleNodeClick = useCallback(
     (nodeId: string) => {
@@ -120,9 +177,9 @@ export default function Home() {
   const handleSeedSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      void loadGraph(seedInput);
+      void createNewSession(seedInput);
     },
-    [loadGraph, seedInput],
+    [createNewSession, seedInput],
   );
 
   useEffect(() => {
@@ -510,7 +567,69 @@ export default function Home() {
       />
 
       <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-10 animate-fade-in">
-        <main className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1fr)]">
+        <main className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(240px,280px)_minmax(0,2.5fr)_minmax(320px,1fr)]">
+          {/* Sessions Sidebar */}
+          <aside className="card-elevated p-4 animate-slide-up max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">Sessions</h2>
+            </div>
+
+            {isLoadingSessions ? (
+              <div className="flex items-center justify-center py-8">
+                <svg className="animate-spin w-6 h-6 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-[var(--text-tertiary)]">No sessions yet</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">Create one to get started</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`p-3 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${currentSessionId === session.id
+                        ? "border-[var(--accent-primary)] bg-[var(--bg-tertiary)]"
+                        : "border-[var(--border-secondary)] hover:bg-[var(--bg-secondary)]"
+                      }`}
+                    onClick={() => void loadSessionGraph(session.id)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                          {session.title || `Session ${session.id.slice(0, 8)}`}
+                        </p>
+                        <p className="text-xs text-[var(--text-tertiary)] truncate mt-0.5">
+                          {session.seed_paper_id}
+                        </p>
+                        <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                          {new Date(session.last_accessed).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void deleteSession(session.id);
+                        }}
+                        className="flex-shrink-0 p-1 hover:bg-red-500/10 rounded transition-colors"
+                        title="Delete session"
+                      >
+                        <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </aside>
           {/* Main Graph Section */}
           <section className="card-elevated p-6 sm:p-8 animate-slide-up">
             {/* Header */}
@@ -569,9 +688,9 @@ export default function Home() {
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    Load Graph
+                    New Session
                   </>
                 )}
               </button>
