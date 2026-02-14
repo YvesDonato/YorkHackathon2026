@@ -143,10 +143,15 @@ async def connect_db():
             logger.info("MongoDB preflight: ensuring graph_papers indexes")
             await db.graph_papers.create_index("arxiv_id", unique=True)
 
-            # Junction: which users have explored which graph papers
-            logger.info("MongoDB preflight: ensuring user_graph_papers indexes")
-            await db.user_graph_papers.create_index([("user_id", 1), ("arxiv_id", 1)], unique=True)
-            await db.user_graph_papers.create_index("user_id")
+            # Sessions: track graph explorations
+            logger.info("MongoDB preflight: ensuring sessions indexes")
+            await db.sessions.create_index("user_id")
+            await db.sessions.create_index("created_at")
+
+            # Session papers: junction table linking sessions to papers
+            logger.info("MongoDB preflight: ensuring session_papers indexes")
+            await db.session_papers.create_index([("session_id", 1), ("arxiv_id", 1)], unique=True)
+            await db.session_papers.create_index("session_id")
         else:
             logger.warning("MongoDB preflight: skipping index creation (MONGODB_ENSURE_INDEXES=false)")
     except Exception as exc:

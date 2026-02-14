@@ -64,6 +64,27 @@ export type PaperResponse = {
   references_error?: string;
 };
 
+// Session types
+export type Session = {
+  id: string;
+  user_id: string;
+  title: string | null;
+  seed_paper_id: string;
+  mode: string;
+  created_at: string;
+  last_accessed: string;
+};
+
+export type SessionCreate = {
+  seed_paper_link: string;
+  mode?: string;
+  title?: string | null;
+};
+
+export type SessionUpdate = {
+  title?: string | null;
+};
+
 const buildUrl = (path: string, params: Record<string, string>): string => {
   const baseUrl = getFastApiBaseUrl().replace(/\/+$/, "");
   const normalizedPath = path.replace(/^\/+/, "");
@@ -101,7 +122,11 @@ const parseErrorDetail = async (response: Response): Promise<string> => {
 
 const requestJson = async <T>(
   path: string,
-  params: Record<string, string>,
+  params: Record<string, string> = {},
+  options: {
+    method?: string;
+    body?: unknown;
+  } = {},
 ): Promise<T> => {
   const headers: Record<string, string> = { Accept: "application/json" };
 
@@ -113,16 +138,29 @@ const requestJson = async <T>(
     }
   }
 
-  const response = await fetch(buildUrl(path, params), {
-    method: "GET",
+  const fetchOptions: RequestInit = {
+    method: options.method || "GET",
     headers,
     cache: "no-store",
-  });
+  };
+
+  // Add body for POST/PATCH/PUT requests
+  if (options.body && ["POST", "PATCH", "PUT"].includes(fetchOptions.method || "")) {
+    headers["Content-Type"] = "application/json";
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetch(buildUrl(path, params), fetchOptions);
 
   if (!response.ok) {
     const detail = await parseErrorDetail(response);
     const statusLabel = `${response.status} ${response.statusText}`.trim();
     throw new Error(detail ? `${statusLabel}: ${detail}` : statusLabel);
+  }
+
+  // Handle 204 No Content
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return (await response.json()) as T;
@@ -133,3 +171,20 @@ export const fetchGraph = (link: string): Promise<ApiGraphResponse> =>
 
 export const fetchPaper = (link: string): Promise<PaperResponse> =>
   requestJson<PaperResponse>("/paper", { link });
+
+// Session API functions
+export const createSession = (payload: SessionCreate): Promise<Session> =>
+  requestJson<Session>("/sessions", {}, { method: "POST", body: payload });
+
+export const listSessions = (): Promise<Session[]> =>
+  requestJson<Session[]>("/sessions");
+
+export const getSession = (sessionId: string): Promise<ApiGraphResponse> =>
+  requestJson<ApiGraphResponse>(`/sessions/${sessionId}`);
+
+export const updateSession = (sessionId: string, payload: SessionUpdate): Promise<Session> =>
+  requestJson<Session>(`/sessions/${sessionId}`, {}, { method: "PATCH", body: payload });
+
+export const deleteSession = (sessionId: string): Promise<void> =>
+  requestJson<void>(`/sessions/${sessionId}`, {}, { method: "DELETE" });
+
