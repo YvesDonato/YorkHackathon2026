@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import FeatureCards from "./components/FeatureCards";
 
 const features = [
   {
@@ -84,19 +85,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mt-16 grid gap-4 md:mt-20 md:grid-cols-3">
-          {features.map((feature) => (
-            <article
-              key={feature.title}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-sm transition hover:border-[var(--accent-primary)]/40 hover:bg-white/[0.05]"
-            >
-              <h2 className="text-lg font-bold text-white">{feature.title}</h2>
-              <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">
-                {feature.description}
-              </p>
-            </article>
-          ))}
-        </section>
+        <FeatureCards features={features} />
       </main>
     </div>
   );
