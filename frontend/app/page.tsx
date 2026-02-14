@@ -458,7 +458,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={isLoadingGraph}
-                className="btn-primary flex items-center gap-2"
+                className="relative overflow-hidden bg-gradient-to-r from-[#a855f7] to-[#ec4899] text-white font-semibold px-6 py-2.5 rounded-lg shadow-md hover:shadow-[0_0_20px_rgba(168,85,247,0.6)] transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
               >
                 {isLoadingGraph ? (
                   <>
