@@ -44,7 +44,7 @@ export default function SignupPage() {
         setIsLoading(true);
 
         try {
-            const response = await fetch('http://localhost:8000/auth/register', {
+            const response = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
