@@ -1,5 +1,5 @@
 export const FASTAPI_BASE_URL =
-  process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "http://localhost:8000";
+  process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "/api";
 
 export type ApiGraphNode = {
   id: string;
@@ -47,13 +47,23 @@ export type PaperResponse = {
 const buildUrl = (path: string, params: Record<string, string>): string => {
   const baseUrl = FASTAPI_BASE_URL.replace(/\/+$/, "");
   const normalizedPath = path.replace(/^\/+/, "");
-  const url = new URL(normalizedPath, `${baseUrl}/`);
 
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
+  if (/^https?:\/\//i.test(baseUrl)) {
+    const url = new URL(normalizedPath, `${baseUrl}/`);
+
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+
+    return url.toString();
   }
 
-  return url.toString();
+  const prefix = baseUrl.startsWith("/") ? baseUrl : `/${baseUrl}`;
+  const queryString = new URLSearchParams(params).toString();
+  const normalizedPrefix = prefix.replace(/\/+$/, "");
+  const resolvedPath = `${normalizedPrefix}/${normalizedPath}`;
+
+  return queryString ? `${resolvedPath}?${queryString}` : resolvedPath;
 };
 
 const parseErrorDetail = async (response: Response): Promise<string> => {
