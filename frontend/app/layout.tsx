@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Research Graph Explorer - arXiv Citation Network",
-  description: "Explore research papers and their citation networks. Visualize connections between arXiv papers in an interactive graph.",
+  title: "Prismarine - arXiv Citation Network",
+  description: "Explore research papers and citation networks with Prismarine. Visualize connections between arXiv papers in an interactive graph.",
 };
 
 export default function RootLayout({

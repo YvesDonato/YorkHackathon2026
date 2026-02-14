@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 const features = [
   {
@@ -27,13 +28,18 @@ export default function HomePage() {
       <header className="relative z-10 border-b border-white/10">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#a855f7] to-[#ec4899] shadow-lg">
-              <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+            <div className="relative h-12 w-12 overflow-hidden rounded-xl shadow-lg">
+              <Image
+                src="/prismarineLogo.png"
+                alt="Prismarine logo"
+                fill
+                sizes="48px"
+                className="object-contain p-0.5"
+                priority
+              />
             </div>
-            <span className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
-              Research Graph Explorer
+            <span className="text-sm font-semibold tracking-[0.08em] text-[var(--text-secondary)]">
+              Prismarine
             </span>
           </div>
 

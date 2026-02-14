@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import Script from "next/script";
+import Image from "next/image";
 import {
   createSession,
   listSessions,
@@ -617,13 +618,18 @@ export default function Home() {
           <div className="flex flex-col gap-4 max-w-sm pointer-events-auto">
             {/* Logo */}
             <div className="glass-card px-5 py-3 rounded-2xl backdrop-blur-xl border border-white/10 shadow-2xl flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-lg">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+              <div className="relative h-10 w-10 overflow-hidden rounded-lg shadow-lg">
+                <Image
+                  src="/prismarineLogo.png"
+                  alt="Prismarine logo"
+                  fill
+                  sizes="40px"
+                  className="object-contain p-0.5"
+                  priority
+                />
               </div>
               <h1 className="text-lg font-bold bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
-                Research Graph
+                Prismarine
               </h1>
             </div>
 
