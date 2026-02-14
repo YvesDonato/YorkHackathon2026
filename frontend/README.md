@@ -26,3 +26,14 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+## Coolify (Dockerfile)
+
+This repo includes a root `Dockerfile` for single-container deployment on Coolify.
+
+- Exposed port: `8080`
+- `nginx` reverse proxy:
+  - `/` -> Next.js (`127.0.0.1:3000`)
+  - `/api/*` -> FastAPI (`127.0.0.1:8000`)
+
+Set `NEXT_PUBLIC_FASTAPI_BASE_URL=/api` in Coolify build/runtime environment.
