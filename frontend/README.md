@@ -31,9 +31,11 @@ Open `http://localhost:3000`.
 
 This repo includes a root `Dockerfile` for single-container deployment on Coolify.
 
-- Exposed port: `8080`
+- Exposed port: controlled by `PORT` (default `8080`)
 - `nginx` reverse proxy:
   - `/` -> Next.js (`127.0.0.1:3000`)
   - `/api/*` -> FastAPI (`127.0.0.1:8000`)
+  - `/healthz` -> readiness endpoint (`200 ok`)
 
 Set `NEXT_PUBLIC_FASTAPI_BASE_URL=/api` in Coolify build/runtime environment.
+Set `PORT` to the same port Coolify routes to this container (for example `8080`).

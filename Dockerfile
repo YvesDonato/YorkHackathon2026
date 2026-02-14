@@ -24,10 +24,12 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_FASTAPI_BASE_URL=/api
+ENV PORT=8080
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        gettext-base \
         nginx \
         python3 \
         python3-pip \
@@ -43,11 +45,13 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY backend /app/backend
 COPY --from=frontend-builder /app/frontend /app/frontend
 
-COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY nginx/default.conf /etc/nginx/templates/default.conf.template
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN rm -f /etc/nginx/sites-enabled/default
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-EXPOSE 8080
+EXPOSE 8080 3000
 
-CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/usr/local/bin/entrypoint.sh"]
