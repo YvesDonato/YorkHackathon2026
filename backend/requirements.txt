@@ -1,8 +1,2 @@
 fastapi[standard]
 httpx
-motor
-python-dotenv
-pymongo[srv]
-passlib[bcrypt]
-python-jose[cryptography]
-pydantic[email]

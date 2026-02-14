@@ -1,7 +1,10 @@
 import os
 import xml.etree.ElementTree as ET
+<<<<<<< HEAD
 import logging
 from contextlib import asynccontextmanager
+=======
+>>>>>>> parent of 0f7f4a2... added: db connection, auth, embedding model
 from typing import Any
 
 import httpx
@@ -9,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+<<<<<<< HEAD
 from auth import router as auth_router, validate_auth_config
 from database import close_db, connect_db, get_db
 from papers import router as papers_router
@@ -39,6 +43,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
+=======
+app = FastAPI(title="arXiv Paper API")
+>>>>>>> parent of 0f7f4a2... added: db connection, auth, embedding model
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
@@ -51,14 +58,10 @@ FRONTEND_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
-
-# Include routers
-app.include_router(auth_router)
-app.include_router(papers_router)
 
 
 @app.get("/healthz")
