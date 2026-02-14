@@ -133,11 +133,14 @@ async def connect_db():
             await db.users.create_index("email", unique=True)
 
             # Vector search index must be created via Atlas UI / CLI, but we ensure
-            # a regular index on user_id for fast lookups.
-            logger.info("MongoDB preflight: ensuring papers indexes")
-            await db.papers.create_index("user_id")
-            await db.papers.create_index("arxiv_id")
-            await db.papers.create_index([("user_id", 1), ("arxiv_id", 1)], unique=True)
+            # regular indexes for fast lookups.
+            logger.info("MongoDB preflight: ensuring graph_papers indexes")
+            await db.graph_papers.create_index("arxiv_id", unique=True)
+
+            # Junction: which users have explored which graph papers
+            logger.info("MongoDB preflight: ensuring user_graph_papers indexes")
+            await db.user_graph_papers.create_index([("user_id", 1), ("arxiv_id", 1)], unique=True)
+            await db.user_graph_papers.create_index("user_id")
         else:
             logger.warning("MongoDB preflight: skipping index creation (MONGODB_ENSURE_INDEXES=false)")
     except Exception as exc:
@@ -154,13 +157,6 @@ async def connect_db():
         raise
 
     logger.info("MongoDB preflight complete: connection established")
-
-    # Graph papers (shared/global) – keyed by arxiv_id
-    await db.graph_papers.create_index("arxiv_id", unique=True)
-
-    # Junction: which users have explored which graph papers
-    await db.user_graph_papers.create_index([("user_id", 1), ("arxiv_id", 1)], unique=True)
-    await db.user_graph_papers.create_index("user_id")
 
 
 async def close_db():

@@ -1,6 +1,5 @@
 fastapi[standard]
 httpx
-<<<<<<< HEAD
 motor
 python-dotenv
 pymongo[srv]
@@ -8,5 +7,3 @@ passlib[bcrypt]
 python-jose[cryptography]
 pydantic[email]
 google-genai
-=======
->>>>>>> 3a82db5269b632afaa96c46e8c11bd916de4093c
