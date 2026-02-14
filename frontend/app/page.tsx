@@ -157,7 +157,19 @@ export default function Home() {
       .attr("fill", "transparent")
       .on("click", () => setSelectedNodeId(null));
 
-    const linkSelection = svg
+    // Create a container group for zoom/pan
+    const zoomContainer = svg.append("g").attr("class", "zoom-container");
+
+    // Add zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([0.1, 4])
+      .on("zoom", (event: any) => {
+        zoomContainer.attr("transform", event.transform);
+      });
+
+    svg.call(zoom as any);
+
+    const linkSelection = zoomContainer
       .append("g")
       .attr("stroke", "#404040")
       .attr("stroke-opacity", 0.6)
@@ -170,7 +182,7 @@ export default function Home() {
       .join("line")
       .attr("stroke-width", 2);
 
-    const nodeSelection = svg
+    const nodeSelection = zoomContainer
       .append("g")
       .selectAll("g")
       .data(simulationNodes, (node: ApiGraphNode) => node.id)
@@ -459,7 +471,7 @@ export default function Home() {
                   <svg className="w-4 h-4 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span>Click nodes to view details • Drag to reposition</span>
+                  <span>Scroll to zoom • Drag to pan • Click nodes for details</span>
                 </div>
               </div>
             </div>
