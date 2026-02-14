@@ -14,6 +14,7 @@ from auth import get_current_user, router as auth_router, validate_auth_config
 from database import close_db, connect_db, get_db
 from papers import (
     cosine_similarity,
+    find_similar_papers_via_search,
     generate_embedding,
     generate_embeddings_batch,
 )
@@ -34,6 +35,7 @@ app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
+
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 RAW_FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 FRONTEND_ORIGINS = [
@@ -161,6 +163,49 @@ async def fetch_arxiv_papers_batch(paper_ids: list[str]) -> dict[str, dict[str, 
     return results
 
 
+def extract_paper_id(link: str) -> str:
+    """Extract paper ID from an arXiv link or raw ID."""
+    if "/abs/" in link:
+        return link.split("/abs/")[-1].rstrip("/")
+    if "/pdf/" in link:
+        return link.split("/pdf/")[-1].replace(".pdf", "")
+    return link
+
+
+def canonicalize_paper_id(value: str) -> str:
+    paper_id = extract_paper_id(value.strip())
+
+    if paper_id.lower().startswith("arxiv:"):
+        paper_id = paper_id.split(":", maxsplit=1)[1]
+
+    base, separator, suffix = paper_id.rpartition("v")
+    if separator and base and suffix.isdigit():
+        paper_id = base
+
+    return paper_id.strip()
+
+
+def build_root_node(paper_id: str, paper: dict[str, Any]) -> GraphNode:
+    title = normalize_whitespace(str(paper.get("title", "")).strip()) or paper_id
+    summary = normalize_whitespace(str(paper.get("summary", "")).strip())
+    published = normalize_whitespace(str(paper.get("published", "")).strip()) or None
+    url = normalize_whitespace(str(paper.get("url", "")).strip()) or f"https://arxiv.org/abs/{paper_id}"
+
+    authors_raw = paper.get("authors") or []
+    authors = [normalize_whitespace(str(author)) for author in authors_raw if str(author).strip()]
+
+    return GraphNode(
+        id=paper_id,
+        label=title,
+        content=summary or f"arXiv paper {paper_id}",
+        url=url,
+        published=published,
+        authors=authors,
+        summary=summary,    
+        is_root=True,
+    )
+
+
 async def fetch_references(paper_id: str) -> list[dict[str, Any]]:
     """Fetch referenced papers via Semantic Scholar, enriched with arXiv metadata."""
     url = f"{SEMANTIC_SCHOLAR_API_URL}/ArXiv:{paper_id}"
@@ -204,28 +249,6 @@ async def fetch_references(paper_id: str) -> list[dict[str, Any]]:
     return refs
 
 
-def extract_paper_id(link: str) -> str:
-    """Extract paper ID from an arXiv link or raw ID."""
-    if "/abs/" in link:
-        return link.split("/abs/")[-1].rstrip("/")
-    if "/pdf/" in link:
-        return link.split("/pdf/")[-1].replace(".pdf", "")
-    return link
-
-
-def canonicalize_paper_id(value: str) -> str:
-    paper_id = extract_paper_id(value.strip())
-
-    if paper_id.lower().startswith("arxiv:"):
-        paper_id = paper_id.split(":", maxsplit=1)[1]
-
-    base, separator, suffix = paper_id.rpartition("v")
-    if separator and base and suffix.isdigit():
-        paper_id = base
-
-    return paper_id.strip()
-
-
 def summarize_references_error(exc: Exception) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
         status_code = exc.response.status_code
@@ -251,32 +274,10 @@ def summarize_references_error(exc: Exception) -> str:
     return "Failed to fetch references."
 
 
-def build_root_node(paper_id: str, paper: dict[str, Any]) -> GraphNode:
-    title = normalize_whitespace(str(paper.get("title", "")).strip()) or paper_id
-    summary = normalize_whitespace(str(paper.get("summary", "")).strip())
-    published = normalize_whitespace(str(paper.get("published", "")).strip()) or None
-    url = normalize_whitespace(str(paper.get("url", "")).strip()) or f"https://arxiv.org/abs/{paper_id}"
-
-    authors_raw = paper.get("authors") or []
-    authors = [normalize_whitespace(str(author)) for author in authors_raw if str(author).strip()]
-
-    return GraphNode(
-        id=paper_id,
-        label=title,
-        content=summary or f"arXiv paper {paper_id}",
-        url=url,
-        published=published,
-        authors=authors,
-        summary=summary,    
-        is_root=True,
-    )
-
-
 def extract_reference_paper_id(reference: dict[str, Any]) -> str | None:
     url_candidate = reference.get("url") or reference.get("arxiv_url")
     if not isinstance(url_candidate, str) or not url_candidate.strip():
         return None
-
     paper_id = canonicalize_paper_id(url_candidate)
     return paper_id or None
 
@@ -311,16 +312,21 @@ def build_reference_node(reference: dict[str, Any]) -> GraphNode | None:
 @app.get("/graph", response_model=GraphResponse)
 async def get_graph(
     link: str = Query(..., description="Seed arXiv paper link or ID"),
+    mode: str = Query("grounding", description="Discovery mode: 'grounding' (Google Search) or 'references' (Semantic Scholar)"),
     current_user: dict = Depends(get_current_user),
 ):
-    """Return a citation graph for a seed paper.
+    """Return a similarity graph for a seed paper.
 
-    All papers are embedded via Gemini, stored in graph_papers, and linked to
-    the current user.  Similarity scores are computed between every node pair.
+    Supports two discovery modes:
+    - **grounding**: Uses Google Search grounding via Gemini to find similar papers.
+    - **references**: Uses Semantic Scholar to fetch cited references.
     """
     paper_id = canonicalize_paper_id(link)
     if not paper_id:
         raise HTTPException(status_code=422, detail="A valid arXiv link or ID is required")
+
+    if mode not in ("grounding", "references"):
+        raise HTTPException(status_code=422, detail="mode must be 'grounding' or 'references'")
 
     try:
         seed_paper = await fetch_arxiv_paper(paper_id)
@@ -330,32 +336,85 @@ async def get_graph(
     if not seed_paper:
         raise HTTPException(status_code=404, detail=f"No paper found for ID '{paper_id}'")
 
-    references: list[dict[str, Any]] = []
-    references_error: str | None = None
-    try:
-        references = await fetch_references(paper_id)
-    except (httpx.HTTPError, ET.ParseError) as exc:
-        references_error = summarize_references_error(exc)
-
-    # ── Build nodes ──────────────────────────────────────────────────────
+    # ── Discover related papers ──────────────────────────────────────────
     root_node = build_root_node(paper_id, seed_paper)
     nodes = [root_node]
     seen_node_ids = {root_node.id}
+    discovery_error: str | None = None
 
-    for reference in references:
-        node = build_reference_node(reference)
-        if node is None or node.id == root_node.id:
-            continue
-        if node.id not in seen_node_ids:
-            nodes.append(node)
-            seen_node_ids.add(node.id)
+    if mode == "grounding":
+        # Google Search grounding
+        seed_title = seed_paper.get("title", "")
+        seed_summary = seed_paper.get("summary", "")
+
+        discovered: list[dict] = []
+        try:
+            discovered = await find_similar_papers_via_search(seed_title, seed_summary)
+        except Exception as exc:
+            discovery_error = f"Google Search grounding failed: {exc}"
+
+        # Batch-fetch arXiv metadata for discovered paper IDs
+        discovered_ids = [d["arxiv_id"] for d in discovered]
+        discovered_meta: dict[str, dict[str, Any]] = {}
+        if discovered_ids:
+            try:
+                discovered_meta = await fetch_arxiv_papers_batch(discovered_ids)
+            except (httpx.HTTPError, ET.ParseError):
+                discovered_meta = {}
+
+        for disc in discovered:
+            aid = disc["arxiv_id"]
+            if aid in seen_node_ids or aid == root_node.id:
+                continue
+
+            meta = discovered_meta.get(aid)
+            if meta:
+                title = normalize_whitespace(str(meta.get("title", "")).strip()) or aid
+                summary = normalize_whitespace(str(meta.get("summary", "")).strip())
+                published = normalize_whitespace(str(meta.get("published", "")).strip()) or None
+                url = normalize_whitespace(str(meta.get("url", "")).strip()) or f"https://arxiv.org/abs/{aid}"
+                authors_raw = meta.get("authors") or []
+                authors = [normalize_whitespace(str(a)) for a in authors_raw if str(a).strip()]
+            else:
+                title = disc.get("title", aid)
+                summary = ""
+                published = None
+                url = f"https://arxiv.org/abs/{aid}"
+                authors = []
+
+            nodes.append(GraphNode(
+                id=aid,
+                label=title,
+                content=summary or f"Related paper {aid}",
+                url=url,
+                published=published,
+                authors=authors,
+                summary=summary,
+                is_root=False,
+            ))
+            seen_node_ids.add(aid)
+
+    else:
+        # Semantic Scholar references
+        references: list[dict[str, Any]] = []
+        try:
+            references = await fetch_references(paper_id)
+        except (httpx.HTTPError, ET.ParseError) as exc:
+            discovery_error = summarize_references_error(exc)
+
+        for reference in references:
+            node = build_reference_node(reference)
+            if node is None or node.id == root_node.id:
+                continue
+            if node.id not in seen_node_ids:
+                nodes.append(node)
+                seen_node_ids.add(node.id)
 
     # ── Generate embeddings for all nodes in one batch ───────────────────
     summaries = [n.summary or n.content for n in nodes]
     try:
         embeddings = await generate_embeddings_batch(summaries)
     except Exception:
-        # If embedding fails, fall back to citation-only graph
         embeddings = []
 
     # Map node id -> embedding for similarity computation
@@ -369,7 +428,6 @@ async def get_graph(
     now = datetime.now(timezone.utc)
 
     for node, emb in (zip(nodes, embeddings) if embeddings else []):
-        # Upsert into shared graph_papers collection
         await db.graph_papers.update_one(
             {"arxiv_id": node.id},
             {
@@ -386,19 +444,18 @@ async def get_graph(
             },
             upsert=True,
         )
-        # Link user ↔ paper in the junction collection
         await db.user_graph_papers.update_one(
             {"user_id": user_id, "arxiv_id": node.id},
             {"$setOnInsert": {"user_id": user_id, "arxiv_id": node.id, "added_at": now}},
             upsert=True,
         )
 
-    # ── Build links: citation + k-nearest-neighbor similarity ─────────────
-    K_NEIGHBORS = 3  # each node connects to its top-k most similar nodes
+    # ── Build links: k-nearest-neighbor similarity ────────────────────────
+    K_NEIGHBORS = 3
     links: list[GraphLink] = []
     seen_link_keys: set[tuple[str, str]] = set()
 
-    # Citation links (root → each reference)
+    # Direct links from root to each discovered paper (with similarity)
     for node in nodes[1:]:
         key = (root_node.id, node.id)
         if key not in seen_link_keys:
@@ -408,19 +465,17 @@ async def get_graph(
             links.append(GraphLink(source=root_node.id, target=node.id, similarity=sim))
             seen_link_keys.add(key)
 
-    # k-NN similarity links: each node connects to its top-k most similar peers
+    # k-NN similarity links between all nodes
     if node_embeddings:
         for i, node_a in enumerate(nodes):
             if node_a.id not in node_embeddings:
                 continue
-            # Compute similarity to every other node
             similarities: list[tuple[int, float]] = []
             for j, node_b in enumerate(nodes):
                 if i == j or node_b.id not in node_embeddings:
                     continue
                 sim = cosine_similarity(node_embeddings[node_a.id], node_embeddings[node_b.id])
                 similarities.append((j, sim))
-            # Sort by similarity descending and take top-k
             similarities.sort(key=lambda x: x[1], reverse=True)
             for j, sim in similarities[:K_NEIGHBORS]:
                 key = tuple(sorted((node_a.id, nodes[j].id)))
@@ -432,8 +487,8 @@ async def get_graph(
         seed_id=root_node.id,
         nodes=nodes,
         links=links,
-        partial_data=references_error is not None,
-        references_error=references_error,
+        partial_data=discovery_error is not None,
+        references_error=discovery_error,
     )
 
 
