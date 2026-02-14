@@ -45,27 +45,15 @@ export type PaperResponse = {
 };
 
 const buildUrl = (path: string, params: Record<string, string>): string => {
-  const baseUrl = (FASTAPI_BASE_URL || "/api").trim().replace(/\/+$/, "");
+  const baseUrl = FASTAPI_BASE_URL.replace(/\/+$/, "");
   const normalizedPath = path.replace(/^\/+/, "");
+  const url = new URL(normalizedPath, `${baseUrl}/`);
 
-  if (/^https?:\/\//i.test(baseUrl)) {
-    const url = new URL(normalizedPath, `${baseUrl}/`);
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, value);
-    }
-
-    return url.toString();
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
   }
 
-  const normalizedBasePath = baseUrl
-    ? baseUrl.startsWith("/")
-      ? baseUrl
-      : `/${baseUrl}`
-    : "/api";
-  const fullPath = `${normalizedBasePath}/${normalizedPath}`.replace(/\/{2,}/g, "/");
-  const query = new URLSearchParams(params).toString();
-
-  return query ? `${fullPath}?${query}` : fullPath;
+  return url.toString();
 };
 
 const parseErrorDetail = async (response: Response): Promise<string> => {
