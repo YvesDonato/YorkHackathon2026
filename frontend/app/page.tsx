@@ -216,10 +216,10 @@ export default function Home() {
     nodeSelection
       .append("text")
       .text((node: ApiGraphNode) => {
-        if (node.label.length <= 22) {
+        if (node.label.length <= 10) {
           return node.label;
         }
-        return `${node.label.slice(0, 19)}...`;
+        return `${node.label.slice(0, 12)}...`;
       })
       .attr("fill", "#f5f5f5")
       .attr("font-size", 11)
@@ -241,6 +241,29 @@ export default function Home() {
       .force("charge", d3.forceManyBody().strength(-750))
       .force("center", d3.forceCenter(viewport.width / 2, viewport.height / 2))
       .force("collision", d3.forceCollide().radius(42));
+
+    // Create tooltip
+    let tooltip = d3.select("body").select(".graph-tooltip");
+    if (tooltip.empty()) {
+      tooltip = d3.select("body")
+        .append("div")
+        .attr("class", "graph-tooltip")
+        .style("position", "fixed")
+        .style("visibility", "hidden")
+        .style("background", "rgba(26, 26, 26, 0.95)")
+        .style("color", "#f5f5f5")
+        .style("padding", "12px 16px")
+        .style("border-radius", "12px")
+        .style("border", "1px solid rgba(168, 85, 247, 0.3)")
+        .style("font-size", "13px")
+        .style("font-weight", "500")
+        .style("max-width", "300px")
+        .style("box-shadow", "0 10px 15px -3px rgba(0, 0, 0, 0.5)")
+        .style("pointer-events", "none")
+        .style("z-index", "9999")
+        .style("backdrop-filter", "blur(12px)")
+        .style("transition", "opacity 0.2s ease");
+    }
 
     nodeSelection.on("click", (event: MouseEvent, node: ApiGraphNode) => {
       event.stopPropagation();
@@ -268,7 +291,20 @@ export default function Home() {
         node.fy = null;
       });
 
-    nodeSelection.call(dragBehavior);
+    nodeSelection.call(dragBehavior)
+      .on("mouseenter", function (event: MouseEvent, node: ApiGraphNode) {
+        tooltip
+          .style("visibility", "visible")
+          .html(`<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>`);
+      })
+      .on("mousemove", function (event: MouseEvent) {
+        tooltip
+          .style("left", (event.clientX + 15) + "px")
+          .style("top", (event.clientY + 15) + "px");
+      })
+      .on("mouseleave", function () {
+        tooltip.style("visibility", "hidden");
+      });
 
     simulation.on("tick", () => {
       linkSelection
@@ -285,7 +321,11 @@ export default function Home() {
 
     simulation.alpha(0.9).restart();
 
-    return () => simulation.stop();
+    return () => {
+      simulation.stop();
+      // Clean up tooltip
+      d3.select("body").select(".graph-tooltip").remove();
+    };
   }, [
     graphState.links,
     graphState.nodes,
