@@ -566,278 +566,261 @@ export default function Home() {
         onLoad={() => setIsD3Loaded(true)}
       />
 
-      <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-10 animate-fade-in">
-        <main className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(240px,280px)_minmax(0,2.5fr)_minmax(320px,1fr)]">
-          {/* Sessions Sidebar */}
-          <aside className="card-elevated p-4 animate-slide-up max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center gap-2 mb-4">
-              <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+      {/* GRAPH LAYER (Fixed Background) */}
+      <div
+        ref={containerRef}
+        className="fixed inset-0 z-0 bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a]"
+      >
+        <svg
+          ref={svgRef}
+          className="h-full w-full"
+          role="img"
+          aria-label="Interactive force graph of arXiv papers"
+        />
+
+        {!isD3Loaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
+            <div className="flex flex-col items-center gap-3">
+              <svg className="animate-spin w-8 h-8 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">Sessions</h2>
+              <p className="text-sm font-medium text-[var(--text-secondary)]">Loading graph engine...</p>
             </div>
+          </div>
+        )}
 
-            {isLoadingSessions ? (
-              <div className="flex items-center justify-center py-8">
-                <svg className="animate-spin w-6 h-6 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-sm text-[var(--text-tertiary)]">No sessions yet</p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-1">Create one to get started</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {sessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className={`p-3 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${currentSessionId === session.id
-                        ? "border-[var(--accent-primary)] bg-[var(--bg-tertiary)]"
-                        : "border-[var(--border-secondary)] hover:bg-[var(--bg-secondary)]"
-                      }`}
-                    onClick={() => void loadSessionGraph(session.id)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                          {session.title || `Session ${session.id.slice(0, 8)}`}
-                        </p>
-                        <p className="text-xs text-[var(--text-tertiary)] truncate mt-0.5">
-                          {session.seed_paper_id}
-                        </p>
-                        <p className="text-xs text-[var(--text-tertiary)] mt-1">
-                          {new Date(session.last_accessed).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void deleteSession(session.id);
-                        }}
-                        className="flex-shrink-0 p-1 hover:bg-red-500/10 rounded transition-colors"
-                        title="Delete session"
-                      >
-                        <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </aside>
-          {/* Main Graph Section */}
-          <section className="card-elevated p-6 sm:p-8 animate-slide-up">
-            {/* Header */}
-            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-lg">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <h1 className="text-3xl font-bold gradient-text">
-                    Research Graph Explorer
-                  </h1>
+        {isD3Loaded &&
+          !isLoadingGraph &&
+          graphState.nodes.length === 0 &&
+          !graphError && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="flex flex-col items-center gap-3 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
+                <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center">
+                  <svg className="w-8 h-8 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </div>
-                <p className="text-sm text-[var(--text-secondary)] mt-1">
-                  Explore research papers and their citation networks
-                </p>
-              </div>
-
-              <div className="badge badge-primary flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                </svg>
-                <span>{graphState.nodes.length} nodes · {graphState.links.length} links</span>
+                <p className="text-sm font-medium text-[var(--text-secondary)]">No citation data found for this paper</p>
               </div>
             </div>
+          )}
+      </div>
 
-            {/* Search Form */}
-            <form className="mb-6 flex flex-wrap gap-3" onSubmit={handleSeedSubmit}>
-              <div className="relative flex-1 min-w-[280px]">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      {/* UI LAYER (Floating Overlays) */}
+      <div className="fixed inset-0 z-10 pointer-events-none flex flex-col p-4 sm:p-6 lg:p-8">
+
+        {/* TOP ROW */}
+        <div className="flex flex-wrap items-start justify-between gap-6">
+
+          {/* LEFT: Branding & Sessions */}
+          <div className="flex flex-col gap-4 max-w-sm pointer-events-auto">
+            {/* Logo */}
+            <div className="glass-card px-5 py-3 rounded-2xl backdrop-blur-xl border border-white/10 shadow-2xl flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-lg">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <input
-                  type="text"
-                  value={seedInput}
-                  onChange={(event) => setSeedInput(event.target.value)}
-                  placeholder="Enter arXiv ID or URL (e.g., 1706.03762)"
-                  className="input-primary w-full !pl-10"
-                />
               </div>
+              <h1 className="text-lg font-bold bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
+                Research Graph
+              </h1>
+            </div>
+
+            {/* Sessions List */}
+            <aside className="glass-card p-4 rounded-2xl border border-white/10 shadow-2xl max-h-[60vh] overflow-y-auto w-72 backdrop-blur-xl bg-[#0a0a0a]/80">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <svg className="w-4 h-4 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                <h2 className="text-sm font-bold text-[var(--text-primary)]">Sessions</h2>
+              </div>
+
+              {isLoadingSessions ? (
+                <div className="flex items-center justify-center py-4">
+                  <svg className="animate-spin w-5 h-5 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              ) : sessions.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-xs text-[var(--text-tertiary)]">No sessions yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {sessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`p-2.5 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${currentSessionId === session.id
+                        ? "border-[var(--accent-primary)] bg-[var(--accent-primary)]/10"
+                        : "border-transparent hover:bg-white/5"
+                        }`}
+                      onClick={() => void loadSessionGraph(session.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                            {session.title || session.id.slice(0, 8)}
+                          </p>
+                          <p className="text-[10px] text-[var(--text-tertiary)] truncate mt-0.5">
+                            {new Date(session.last_accessed).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteSession(session.id);
+                          }}
+                          className="flex-shrink-0 p-1 hover:bg-red-500/20 rounded text-red-400/60 hover:text-red-400 transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </aside>
+          </div>
+
+          {/* CENTER: Search Bar */}
+          <div className="flex-1 max-w-xl pointer-events-auto">
+            <form className="glass-card p-1.5 pl-4 rounded-xl backdrop-blur-xl border border-white/10 shadow-2xl flex items-center gap-2 focus-within:border-[var(--accent-primary)] transition-colors" onSubmit={handleSeedSubmit}>
+              <svg className="w-5 h-5 text-[var(--text-tertiary)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={seedInput}
+                onChange={(event) => setSeedInput(event.target.value)}
+                placeholder="Search by arXiv ID (e.g., 1706.03762)"
+                className="bg-transparent border-none text-sm text-white placeholder-white/30 focus:ring-0 w-full p-0"
+              />
               <button
                 type="submit"
                 disabled={isLoadingGraph}
-                className="relative overflow-hidden bg-gradient-to-r from-[#a855f7] to-[#ec4899] text-white font-semibold px-6 py-2.5 rounded-lg shadow-md hover:shadow-[0_0_20px_rgba(168,85,247,0.6)] transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+                className="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
               >
-                {isLoadingGraph ? (
-                  <>
-                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    New Session
-                  </>
-                )}
+                {isLoadingGraph ? "Loading..." : "Load Graph"}
               </button>
             </form>
 
-            {/* Error Message */}
             {graphError && (
-              <div className="error-message mb-6 animate-slide-down">
-                <div className="flex items-start gap-2">
-                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>{graphError}</span>
-                </div>
+              <div className="mt-4 glass-card p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 text-xs flex items-center gap-2 animate-slide-down shadow-xl">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {graphError}
               </div>
             )}
+          </div>
 
-            {/* Graph Container */}
-            <div
-              ref={containerRef}
-              className="relative h-[68vh] min-h-[480px] overflow-hidden rounded-2xl border border-[var(--border-secondary)] bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a] shadow-inner animate-scale-in"
-            >
-              <svg
-                ref={svgRef}
-                className="h-full w-full"
-                role="img"
-                aria-label="Interactive force graph of arXiv papers"
-              />
+          {/* RIGHT: Stats & Details */}
+          <div className="flex flex-col gap-4 items-end pointer-events-auto w-80">
+            {/* Stats Badge */}
+            <div className="glass-card px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+              <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+              {graphState.nodes.length} nodes · {graphState.links.length} links
+            </div>
 
-              {!isD3Loaded && (
-                <div className="absolute inset-0 flex items-center justify-center glass-card">
-                  <div className="flex flex-col items-center gap-3">
-                    <svg className="animate-spin w-8 h-8 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            {/* Details Panel */}
+            <aside className="glass-card p-5 rounded-2xl border border-white/10 shadow-2xl w-full max-h-[calc(100vh-8rem)] overflow-y-auto backdrop-blur-xl bg-[#0a0a0a]/80 animate-slide-up">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h2 className="text-base font-bold text-[var(--text-primary)]">Paper Details</h2>
+              </div>
+
+              {selectedNode ? (
+                <div key={selectedNode.id} className="space-y-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="badge badge-secondary font-mono text-[10px] px-2 py-0.5">
+                      {selectedNode.id}
+                    </span>
+                    <a
+                      href={`https://arxiv.org/abs/${selectedNode.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-medium text-[var(--accent-primary)] hover:text-[#f472b6] flex items-center gap-1 transition-colors"
+                    >
+                      View on arXiv
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)] leading-snug mb-2">
+                      {selectedNode.label}
+                    </h3>
+
+                    <div className="text-xs text-[var(--text-secondary)] leading-relaxed max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                      {selectedNode.content ? (
+                        <p>{selectedNode.content}</p>
+                      ) : (
+                        <p className="italic text-[var(--text-tertiary)]">
+                          No abstract available.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-[var(--border-secondary)] space-y-2">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-[var(--text-tertiary)]">Connections</span>
+                      <span className="font-medium text-[var(--text-secondary)]">
+                        {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "Leaf Node"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center">
+                    <svg className="w-6 h-6 text-[var(--text-tertiary)] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                     </svg>
-                    <p className="text-sm font-medium text-[var(--text-secondary)]">Loading graph engine...</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-[var(--text-secondary)]">
+                      No paper selected
+                    </p>
+                    <p className="text-[10px] text-[var(--text-tertiary)] mt-1">
+                      Click a node or hold to focus
+                    </p>
                   </div>
                 </div>
               )}
+            </aside>
+          </div>
 
-              {isD3Loaded &&
-                !isLoadingGraph &&
-                graphState.nodes.length === 0 &&
-                !graphError && (
-                  <div className="absolute inset-0 flex items-center justify-center glass-card">
-                    <div className="flex flex-col items-center gap-3 text-center">
-                      <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center">
-                        <svg className="w-8 h-8 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <p className="text-sm font-medium text-[var(--text-secondary)]">No citation data found for this paper</p>
-                    </div>
-                  </div>
-                )}
+        </div>
 
-              <div className="glass-card pointer-events-none absolute bottom-4 left-4 px-4 py-2.5 text-xs text-[var(--text-secondary)] backdrop-blur-md">
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>Scroll to zoom • Drag to pan • Click nodes for details</span>
-                </div>
-              </div>
+        {/* BOTTOM LEFT: Controls Help */}
+        <div className="mt-auto pointer-events-auto self-start">
+          <div className="glass-card inline-flex items-center gap-3 px-4 py-2 rounded-full text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+              Scroll to zoom
             </div>
-          </section>
-
-          {/* Sidebar */}
-          <aside className="card-elevated p-6 animate-slide-up" style={{ animationDelay: "200ms" }}>
-            <div className="flex items-center gap-2 mb-4">
-              <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <h2 className="text-xl font-bold text-[var(--text-primary)]">Paper Details</h2>
+            <div className="w-px h-3 bg-white/10"></div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+              Drag to pan
             </div>
+            <div className="w-px h-3 bg-white/10"></div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+              Hold to focus
+            </div>
+          </div>
+        </div>
 
-            {selectedNode ? (
-              <div key={selectedNode.id} className="space-y-5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="badge badge-secondary font-mono text-xs animate-fade-in opacity-0" style={{ animationDelay: "0ms", animationFillMode: "forwards" }}>
-                    {selectedNode.id}
-                  </span>
-                  <a
-                    href={`https://arxiv.org/abs/${selectedNode.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ animationDelay: "100ms", animationFillMode: "forwards" }}
-                    className="text-xs font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] flex items-center gap-1 transition-smooth animate-fade-in opacity-0"
-                  >
-                    View on arXiv
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-bold text-[var(--text-primary)] leading-snug mb-3 animate-fade-in opacity-0" style={{ animationDelay: "200ms", animationFillMode: "forwards" }}>
-                    {selectedNode.label}
-                  </h3>
-
-                  <div className="text-sm text-[var(--text-secondary)] leading-relaxed space-y-2 animate-fade-in opacity-0" style={{ animationDelay: "300ms", animationFillMode: "forwards" }}>
-                    {selectedNode.content ? (
-                      <p>{selectedNode.content}</p>
-                    ) : (
-                      <p className="italic text-[var(--text-tertiary)]">
-                        No abstract available for this paper.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-[var(--border-secondary)] space-y-2">
-                  <div className="flex items-center justify-between text-xs animate-fade-in opacity-0" style={{ animationDelay: "400ms", animationFillMode: "forwards" }}>
-                    <span className="text-[var(--text-tertiary)]">Status</span>
-                    <span className="font-medium text-[var(--text-secondary)]">
-                      {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "No Citations"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--text-tertiary)]">Node Type</span>
-                    <span className="font-medium text-[var(--text-secondary)]">
-                      {selectedNodeId === selectedNode.id ? "Selected" : "Standard"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9]/20 to-[#f59e0b]/20 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">
-                    No paper selected
-                  </p>
-                  <p className="text-xs text-[var(--text-tertiary)]">
-                    Click a node in the graph to view details
-                  </p>
-                </div>
-              </div>
-            )}
-          </aside>
-        </main>
       </div>
     </>
   );
