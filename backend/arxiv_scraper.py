@@ -1,5 +1,7 @@
 import os
 import xml.etree.ElementTree as ET
+<<<<<<< HEAD
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -22,12 +24,29 @@ from papers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage database connection lifecycle."""
-    await connect_db()
-    yield
-    await close_db()
+    try:
+        logger.info("Validating authentication configuration")
+        validate_auth_config()
+
+        logger.info("Connecting database and running startup initialization")
+        await connect_db()
+        logger.info("Backend startup complete")
+    except Exception:
+        logger.exception("Backend startup failed")
+        raise
+
+    try:
+        yield
+    finally:
+        logger.info("Closing database connection")
+        await close_db()
+        logger.info("Backend shutdown complete")
 
 
 app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
+=======
+app = FastAPI(title="arXiv Paper API")
+>>>>>>> parent of 0f7f4a2... added: db connection, auth, embedding model
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
@@ -40,14 +59,17 @@ FRONTEND_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth_router)
-app.include_router(papers_router)
+
+@app.get("/healthz")
+async def healthz():
+    if get_db() is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    return {"status": "ok"}
 
 
 class GraphNode(BaseModel):
