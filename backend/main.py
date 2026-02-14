@@ -1,5 +1,6 @@
 import os
 import xml.etree.ElementTree as ET
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage database connection lifecycle."""
+    validate_auth_config()
     await connect_db()
     yield
     await close_db()
