@@ -159,8 +159,8 @@ export default function Home() {
 
     const linkSelection = svg
       .append("g")
-      .attr("stroke", "#64748b")
-      .attr("stroke-opacity", 0.45)
+      .attr("stroke", "#404040")
+      .attr("stroke-opacity", 0.6)
       .selectAll("line")
       .data(
         simulationLinks,
@@ -168,31 +168,38 @@ export default function Home() {
           `${toNodeId(link.source)}->${toNodeId(link.target)}`,
       )
       .join("line")
-      .attr("stroke-width", 1.8);
+      .attr("stroke-width", 2);
 
     const nodeSelection = svg
       .append("g")
       .selectAll("g")
       .data(simulationNodes, (node: ApiGraphNode) => node.id)
       .join("g")
-      .attr("class", "cursor-pointer select-none");
+      .attr("class", "graph-node cursor-pointer select-none");
 
     nodeSelection
       .append("circle")
-      .attr("r", (node: ApiGraphNode) => (node.id === selectedNodeId ? 30 : 24))
+      .attr("r", (node: ApiGraphNode) => (node.id === selectedNodeId ? 32 : 26))
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === selectedNodeId) {
-          return "#0f172a";
+          return "#f59e0b";
         }
-
-        return hasOutgoingLinks(node.id) ? "#0369a1" : "#334155";
+        return hasOutgoingLinks(node.id) ? "#0ea5e9" : "#404040";
       })
       .attr("stroke", (node: ApiGraphNode) =>
-        node.id === selectedNodeId ? "#f59e0b" : "#e2e8f0",
+        node.id === selectedNodeId ? "#fbbf24" : "#525252",
       )
       .attr("stroke-width", (node: ApiGraphNode) =>
         node.id === selectedNodeId ? 3 : 2,
-      );
+      )
+      .style("filter", (node: ApiGraphNode) => {
+        if (node.id === selectedNodeId) {
+          return "drop-shadow(0 0 12px rgba(245, 158, 11, 0.6))";
+        }
+        return hasOutgoingLinks(node.id)
+          ? "drop-shadow(0 0 8px rgba(14, 165, 233, 0.4))"
+          : "none";
+      });
 
     nodeSelection
       .append("text")
@@ -200,10 +207,9 @@ export default function Home() {
         if (node.label.length <= 22) {
           return node.label;
         }
-
         return `${node.label.slice(0, 19)}...`;
       })
-      .attr("fill", "#f8fafc")
+      .attr("fill", "#f5f5f5")
       .attr("font-size", 11)
       .attr("font-weight", 600)
       .attr("text-anchor", "middle")
@@ -217,12 +223,12 @@ export default function Home() {
         d3
           .forceLink(simulationLinks)
           .id((node: ApiGraphNode) => node.id)
-          .distance(130)
+          .distance(140)
           .strength(0.6),
       )
-      .force("charge", d3.forceManyBody().strength(-700))
+      .force("charge", d3.forceManyBody().strength(-750))
       .force("center", d3.forceCenter(viewport.width / 2, viewport.height / 2))
-      .force("collision", d3.forceCollide().radius(38));
+      .force("collision", d3.forceCollide().radius(42));
 
     nodeSelection.on("click", (event: MouseEvent, node: ApiGraphNode) => {
       event.stopPropagation();
@@ -274,10 +280,51 @@ export default function Home() {
     handleNodeClick,
     hasOutgoingLinks,
     isD3Loaded,
-    selectedNodeId,
     viewport.height,
     viewport.width,
   ]);
+
+  // Separate effect to handle selection changes without re-rendering entire graph
+  useEffect(() => {
+    if (!isD3Loaded || !svgRef.current) {
+      return;
+    }
+
+    const d3 = window.d3;
+    if (!d3) {
+      return;
+    }
+
+    const svg = d3.select(svgRef.current);
+
+    // Update all nodes with smooth transitions
+    svg.selectAll("g.graph-node")
+      .select("circle")
+      .transition()
+      .duration(600)
+      .ease(d3.easeQuadOut)
+      .attr("r", (node: ApiGraphNode) => (node.id === selectedNodeId ? 32 : 26))
+      .attr("fill", (node: ApiGraphNode) => {
+        if (node.id === selectedNodeId) {
+          return "#f59e0b";
+        }
+        return hasOutgoingLinks(node.id) ? "#0ea5e9" : "#404040";
+      })
+      .attr("stroke", (node: ApiGraphNode) =>
+        node.id === selectedNodeId ? "#fbbf24" : "#525252"
+      )
+      .attr("stroke-width", (node: ApiGraphNode) =>
+        node.id === selectedNodeId ? 3 : 2
+      )
+      .style("filter", (node: ApiGraphNode) => {
+        if (node.id === selectedNodeId) {
+          return "drop-shadow(0 0 12px rgba(245, 158, 11, 0.6))";
+        }
+        return hasOutgoingLinks(node.id)
+          ? "drop-shadow(0 0 8px rgba(14, 165, 233, 0.4))"
+          : "none";
+      });
+  }, [selectedNodeId, isD3Loaded, hasOutgoingLinks]);
 
   return (
     <>
@@ -287,50 +334,90 @@ export default function Home() {
         onLoad={() => setIsD3Loaded(true)}
       />
 
-      <div className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900 sm:px-6 lg:px-10">
-        <main className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(0,2.45fr)_minmax(280px,1fr)]">
-          <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-10 animate-fade-in">
+        <main className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[minmax(0,2.5fr)_minmax(320px,1fr)]">
+          {/* Main Graph Section */}
+          <section className="card-elevated p-6 sm:p-8 animate-slide-up">
+            {/* Header */}
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  arXiv Reference Graph
-                </h1>
-                <p className="text-sm text-slate-600">
-                  Click a node to view its details in the sidebar.
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0ea5e9] to-[#f59e0b] flex items-center justify-center shadow-lg">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <h1 className="text-3xl font-bold gradient-text">
+                    Research Graph Explorer
+                  </h1>
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">
+                  Explore research papers and their citation networks
                 </p>
               </div>
 
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {graphState.nodes.length} nodes | {graphState.links.length} links
-              </span>
+              <div className="badge badge-primary flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                </svg>
+                <span>{graphState.nodes.length} nodes · {graphState.links.length} links</span>
+              </div>
             </div>
 
-            <form className="mb-4 flex flex-wrap gap-2" onSubmit={handleSeedSubmit}>
-              <input
-                type="text"
-                value={seedInput}
-                onChange={(event) => setSeedInput(event.target.value)}
-                placeholder="Enter arXiv ID or URL"
-                className="min-w-[240px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
-              />
+            {/* Search Form */}
+            <form className="mb-6 flex flex-wrap gap-3" onSubmit={handleSeedSubmit}>
+              <div className="relative flex-1 min-w-[280px]">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={seedInput}
+                  onChange={(event) => setSeedInput(event.target.value)}
+                  placeholder="Enter arXiv ID or URL (e.g., 1706.03762)"
+                  className="input-primary w-full pl-10"
+                />
+              </div>
               <button
                 type="submit"
                 disabled={isLoadingGraph}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary flex items-center gap-2"
               >
-                {isLoadingGraph ? "Loading..." : "Load Graph"}
+                {isLoadingGraph ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Load Graph
+                  </>
+                )}
               </button>
             </form>
 
-            {graphError ? (
-              <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {graphError}
-              </p>
-            ) : null}
+            {/* Error Message */}
+            {graphError && (
+              <div className="error-message mb-6 animate-slide-down">
+                <div className="flex items-start gap-2">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{graphError}</span>
+                </div>
+              </div>
+            )}
 
+            {/* Graph Container */}
             <div
               ref={containerRef}
-              className="relative h-[68vh] min-h-[430px] overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_30%_20%,_#f8fafc,_#e2e8f0)]"
+              className="relative h-[68vh] min-h-[480px] overflow-hidden rounded-2xl border border-[var(--border-secondary)] bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a] shadow-inner animate-scale-in"
             >
               <svg
                 ref={svgRef}
@@ -339,48 +426,120 @@ export default function Home() {
                 aria-label="Interactive force graph of arXiv papers"
               />
 
-              {!isD3Loaded ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-sm font-medium text-slate-600">
-                  Loading D3 graph engine...
+              {!isD3Loaded && (
+                <div className="absolute inset-0 flex items-center justify-center glass-card">
+                  <div className="flex flex-col items-center gap-3">
+                    <svg className="animate-spin w-8 h-8 text-[var(--accent-primary)]" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p className="text-sm font-medium text-[var(--text-secondary)]">Loading graph engine...</p>
+                  </div>
                 </div>
-              ) : null}
+              )}
 
               {isD3Loaded &&
-              !isLoadingGraph &&
-              graphState.nodes.length === 0 &&
-              !graphError ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-sm font-medium text-slate-600">
-                  No nodes returned for this paper.
-                </div>
-              ) : null}
+                !isLoadingGraph &&
+                graphState.nodes.length === 0 &&
+                !graphError && (
+                  <div className="absolute inset-0 flex items-center justify-center glass-card">
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center">
+                        <svg className="w-8 h-8 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-medium text-[var(--text-secondary)]">No citation data found for this paper</p>
+                    </div>
+                  </div>
+                )}
 
-              <p className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-white/80 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">
-                Tip: click any node to update the sidebar details.
-              </p>
+              <div className="glass-card pointer-events-none absolute bottom-4 left-4 px-4 py-2.5 text-xs text-[var(--text-secondary)] backdrop-blur-md">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Click nodes to view details • Drag to reposition</span>
+                </div>
+              </div>
             </div>
           </section>
 
-          <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Selected Node</h2>
+          {/* Sidebar */}
+          <aside className="card-elevated p-6 animate-slide-up" style={{ animationDelay: "200ms" }}>
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h2 className="text-xl font-bold text-[var(--text-primary)]">Paper Details</h2>
+            </div>
 
             {selectedNode ? (
-              <div className="mt-4 space-y-4">
-                <span className="inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-                  {selectedNode.id}
-                </span>
+              <div className="space-y-5 animate-fade-in">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="badge badge-secondary font-mono text-xs">
+                    {selectedNode.id}
+                  </span>
+                  <a
+                    href={`https://arxiv.org/abs/${selectedNode.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] flex items-center gap-1 transition-smooth"
+                  >
+                    View on arXiv
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
 
-                <h3 className="text-base font-semibold text-slate-900">
-                  {selectedNode.label}
-                </h3>
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] leading-snug mb-3">
+                    {selectedNode.label}
+                  </h3>
 
-                <p className="text-sm leading-7 text-slate-700">
-                  {selectedNode.content || "No summary available for this node."}
-                </p>
+                  <div className="text-sm text-[var(--text-secondary)] leading-relaxed space-y-2">
+                    {selectedNode.content ? (
+                      <p>{selectedNode.content}</p>
+                    ) : (
+                      <p className="italic text-[var(--text-tertiary)]">
+                        No abstract available for this paper.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-[var(--border-secondary)] space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--text-tertiary)]">Status</span>
+                    <span className="font-medium text-[var(--text-secondary)]">
+                      {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "No Citations"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--text-tertiary)]">Node Type</span>
+                    <span className="font-medium text-[var(--text-secondary)]">
+                      {selectedNodeId === selectedNode.id ? "Selected" : "Standard"}
+                    </span>
+                  </div>
+                </div>
               </div>
             ) : (
-              <p className="mt-4 text-sm leading-7 text-slate-600">
-                Load a graph and click a node to view paper details.
-              </p>
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#0ea5e9]/20 to-[#f59e0b]/20 flex items-center justify-center">
+                  <svg className="w-10 h-10 text-[var(--text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">
+                    No paper selected
+                  </p>
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    Click a node in the graph to view details
+                  </p>
+                </div>
+              </div>
             )}
           </aside>
         </main>
