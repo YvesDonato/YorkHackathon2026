@@ -16,7 +16,6 @@ from papers import (
     cosine_similarity,
     generate_embedding,
     generate_embeddings_batch,
-    router as papers_router,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,23 +24,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage database connection lifecycle."""
-    try:
-        logger.info("Validating authentication configuration")
-        validate_auth_config()
-
-        logger.info("Connecting database and running startup initialization")
-        await connect_db()
-        logger.info("Backend startup complete")
-    except Exception:
-        logger.exception("Backend startup failed")
-        raise
-
-    try:
-        yield
-    finally:
-        logger.info("Closing database connection")
-        await close_db()
-        logger.info("Backend shutdown complete")
+    validate_auth_config()
+    await connect_db()
+    yield
+    await close_db()
 
 
 app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
@@ -58,13 +44,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
 app.include_router(auth_router)
-app.include_router(papers_router)
 
 
 @app.get("/healthz")
@@ -408,7 +393,8 @@ async def get_graph(
             upsert=True,
         )
 
-    # ── Build links with similarity scores ───────────────────────────────
+    # ── Build links: citation + k-nearest-neighbor similarity ─────────────
+    K_NEIGHBORS = 3  # each node connects to its top-k most similar nodes
     links: list[GraphLink] = []
     seen_link_keys: set[tuple[str, str]] = set()
 
@@ -422,14 +408,24 @@ async def get_graph(
             links.append(GraphLink(source=root_node.id, target=node.id, similarity=sim))
             seen_link_keys.add(key)
 
-    # Similarity links between all non-root node pairs
+    # k-NN similarity links: each node connects to its top-k most similar peers
     if node_embeddings:
-        for i in range(1, len(nodes)):
-            for j in range(i + 1, len(nodes)):
-                key = (nodes[i].id, nodes[j].id)
+        for i, node_a in enumerate(nodes):
+            if node_a.id not in node_embeddings:
+                continue
+            # Compute similarity to every other node
+            similarities: list[tuple[int, float]] = []
+            for j, node_b in enumerate(nodes):
+                if i == j or node_b.id not in node_embeddings:
+                    continue
+                sim = cosine_similarity(node_embeddings[node_a.id], node_embeddings[node_b.id])
+                similarities.append((j, sim))
+            # Sort by similarity descending and take top-k
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            for j, sim in similarities[:K_NEIGHBORS]:
+                key = tuple(sorted((node_a.id, nodes[j].id)))
                 if key not in seen_link_keys:
-                    sim = round(cosine_similarity(node_embeddings[nodes[i].id], node_embeddings[nodes[j].id]), 4)
-                    links.append(GraphLink(source=nodes[i].id, target=nodes[j].id, similarity=sim))
+                    links.append(GraphLink(source=node_a.id, target=nodes[j].id, similarity=round(sim, 4)))
                     seen_link_keys.add(key)
 
     return GraphResponse(
@@ -490,6 +486,7 @@ async def graph_search(
     return results
 
 
+# old endpoint just use /graph
 @app.get("/paper")
 async def get_paper(link: str = Query(..., description="arXiv paper link or ID")):
     paper_id = canonicalize_paper_id(link)
