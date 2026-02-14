@@ -39,3 +39,7 @@ This repo includes a root `Dockerfile` for single-container deployment on Coolif
 
 Set `NEXT_PUBLIC_FASTAPI_BASE_URL=/api` in Coolify build/runtime environment.
 Set `PORT` to the same port Coolify routes to this container (for example `8080`).
+
+If you previously saw `400 Request Header Or Cookie Too Large`, this image already
+raises nginx and Node header limits. After deploying, do a forced rebuild and clear
+old cookies for the domain once.

@@ -13,7 +13,7 @@ ARG NEXT_PUBLIC_FASTAPI_BASE_URL=/api
 ENV NEXT_PUBLIC_FASTAPI_BASE_URL=${NEXT_PUBLIC_FASTAPI_BASE_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build && npm prune --omit=dev
+RUN npm run build
 
 
 FROM node:20-bookworm-slim AS runtime
@@ -25,6 +25,7 @@ ENV PYTHONUNBUFFERED=1
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_FASTAPI_BASE_URL=/api
 ENV PORT=8080
+ENV NODE_OPTIONS=--max-http-header-size=131072
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
