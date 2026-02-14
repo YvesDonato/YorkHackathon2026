@@ -13,14 +13,14 @@
 
   /* Text Colors */
   --text-primary: #f5f5f5;
-  --text-secondary: #a3a3a3;
-  --text-tertiary: #737373;
+  --text-secondary: #c4b5fd;
+  --text-tertiary: #a78bfa;
 
   /* Accent Colors */
-  --accent-primary: #0ea5e9;
-  --accent-primary-hover: #38bdf8;
-  --accent-secondary: #f59e0b;
-  --accent-secondary-hover: #fbbf24;
+  --accent-primary: #a855f7;
+  --accent-primary-hover: #c084fc;
+  --accent-secondary: #ec4899;
+  --accent-secondary-hover: #f472b6;
 
   /* Border & Divider */
   --border-primary: #404040;
@@ -37,7 +37,7 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.3);
+  --shadow-glow: 0 0 20px rgba(168, 85, 247, 0.4);
 
   /* Animation Durations */
   --duration-fast: 300ms;
@@ -244,7 +244,7 @@ body {
 
 .input-primary:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15);
 }
 
 .input-primary::placeholder {
@@ -262,15 +262,15 @@ body {
 }
 
 .badge-primary {
-  background: rgba(14, 165, 233, 0.15);
+  background: rgba(168, 85, 247, 0.15);
   color: var(--accent-primary);
-  border: 1px solid rgba(14, 165, 233, 0.3);
+  border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
 .badge-secondary {
-  background: rgba(245, 158, 11, 0.15);
+  background: rgba(236, 72, 153, 0.15);
   color: var(--accent-secondary);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  border: 1px solid rgba(236, 72, 153, 0.3);
 }
 
 .gradient-text {

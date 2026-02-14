@@ -182,22 +182,22 @@ export default function Home() {
       .attr("r", (node: ApiGraphNode) => (node.id === selectedNodeId ? 32 : 26))
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === selectedNodeId) {
-          return "#f59e0b";
+          return "#ec4899";
         }
-        return hasOutgoingLinks(node.id) ? "#0ea5e9" : "#404040";
+        return hasOutgoingLinks(node.id) ? "#a855f7" : "#404040";
       })
       .attr("stroke", (node: ApiGraphNode) =>
-        node.id === selectedNodeId ? "#fbbf24" : "#525252",
+        node.id === selectedNodeId ? "#f472b6" : "#525252",
       )
       .attr("stroke-width", (node: ApiGraphNode) =>
         node.id === selectedNodeId ? 3 : 2,
       )
       .style("filter", (node: ApiGraphNode) => {
         if (node.id === selectedNodeId) {
-          return "drop-shadow(0 0 12px rgba(245, 158, 11, 0.6))";
+          return "drop-shadow(0 0 12px rgba(236, 72, 153, 0.6))";
         }
         return hasOutgoingLinks(node.id)
-          ? "drop-shadow(0 0 8px rgba(14, 165, 233, 0.4))"
+          ? "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))"
           : "none";
       });
 
@@ -306,22 +306,22 @@ export default function Home() {
       .attr("r", (node: ApiGraphNode) => (node.id === selectedNodeId ? 32 : 26))
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === selectedNodeId) {
-          return "#f59e0b";
+          return "#ec4899";
         }
-        return hasOutgoingLinks(node.id) ? "#0ea5e9" : "#404040";
+        return hasOutgoingLinks(node.id) ? "#a855f7" : "#404040";
       })
       .attr("stroke", (node: ApiGraphNode) =>
-        node.id === selectedNodeId ? "#fbbf24" : "#525252"
+        node.id === selectedNodeId ? "#f472b6" : "#525252"
       )
       .attr("stroke-width", (node: ApiGraphNode) =>
         node.id === selectedNodeId ? 3 : 2
       )
       .style("filter", (node: ApiGraphNode) => {
         if (node.id === selectedNodeId) {
-          return "drop-shadow(0 0 12px rgba(245, 158, 11, 0.6))";
+          return "drop-shadow(0 0 12px rgba(236, 72, 153, 0.6))";
         }
         return hasOutgoingLinks(node.id)
-          ? "drop-shadow(0 0 8px rgba(14, 165, 233, 0.4))"
+          ? "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))"
           : "none";
       });
   }, [selectedNodeId, isD3Loaded, hasOutgoingLinks]);
