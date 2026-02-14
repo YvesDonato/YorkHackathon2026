@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+httpx
+motor
+pydantic
+pydantic-settings
+python-dotenv
+certifi
+python-multipart
+PyMuPDF
+pdfplumber
