@@ -61,8 +61,8 @@ export default function SignupPage() {
             localStorage.setItem('access_token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
 
-            // Redirect to main page
-            window.location.href = '/';
+            // Redirect to application page
+            window.location.href = '/app';
         } catch (err: any) {
             setError(err.message || "Signup failed. Please try again.");
         } finally {

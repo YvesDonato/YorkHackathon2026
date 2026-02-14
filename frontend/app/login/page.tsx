@@ -33,8 +33,8 @@ export default function LoginPage() {
             localStorage.setItem('access_token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
 
-            // Redirect to main page
-            window.location.href = '/';
+            // Redirect to application page
+            window.location.href = '/app';
         } catch (err) {
             setError("Login failed. Please try again.");
         } finally {
