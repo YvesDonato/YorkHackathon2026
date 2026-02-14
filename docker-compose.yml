@@ -22,4 +22,4 @@ services:
         condition: service_healthy
     restart: unless-stopped
     expose:
-      - "3000"
+      - "80"

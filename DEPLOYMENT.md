@@ -2,7 +2,7 @@
 
 This repository deploys as two services:
 
-- `frontend` (Next.js) on port `3000`
+- `frontend` (Next.js) on port `80`
 - `backend` (FastAPI) on port `8000`
 
 ## 1. Required Environment Variables
@@ -21,12 +21,17 @@ Notes:
 
 1. Create a new application from this repository.
 2. Select **Docker Compose** as the deployment type.
-3. Set compose file path to `docker-compose.yml` at repo root.
+3. Set compose file path to `docker-compose.yaml` (or `docker-compose.yml`) at repo root.
+   Do not prefix it with `/`.
 4. Add the environment variables above.
 5. Configure domains:
-   - Route `app.<your-domain>` to service `frontend` on port `3000`.
+   - Route `app.<your-domain>` to service `frontend` on port `80`.
    - Route `api.<your-domain>` to service `backend` on port `8000`.
 6. Deploy.
+
+Important:
+- Coolify defaults domain routing to port `80`. The frontend is configured for this.
+- For backend domain routing, explicitly set port `8000` in Coolify for `api.<your-domain>`.
 
 ## 3. Local Validation
 
@@ -43,7 +48,7 @@ Smoke tests:
 ```bash
 docker compose exec -T backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/openapi.json').status)"
 docker compose exec -T backend python -c "import urllib.request, json; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/graph?link=1706.03762')); print(data.get('seed_id'), len(data.get('nodes', [])), len(data.get('links', [])))"
-docker compose exec -T frontend node -e "fetch('http://127.0.0.1:3000').then(async (r) => { console.log(r.status, (await r.text()).length); })"
+docker compose exec -T frontend node -e "fetch('http://127.0.0.1:80').then(async (r) => { console.log(r.status, (await r.text()).length); })"
 ```
 
 Stop services:
