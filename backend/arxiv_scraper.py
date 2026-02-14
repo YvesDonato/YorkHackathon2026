@@ -57,8 +57,8 @@ FRONTEND_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -72,6 +72,10 @@ async def healthz():
     if get_db() is None:
         raise HTTPException(status_code=503, detail="Database not initialized")
     return {"status": "ok"}
+
+
+# Include routers
+app.include_router(auth_router)
 
 
 class GraphNode(BaseModel):

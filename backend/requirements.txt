@@ -2,9 +2,10 @@ fastapi
 uvicorn[standard]
 httpx
 motor
-python-dotenv
-pymongo[srv]
-passlib[bcrypt]
 python-jose[cryptography]
+passlib[argon2]
+python-dotenv
+argon2-cffi
+pymongo[srv]
 pydantic[email]
 google-genai
