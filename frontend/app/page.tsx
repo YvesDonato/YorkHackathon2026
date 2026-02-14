@@ -552,16 +552,17 @@ export default function Home() {
             </div>
 
             {selectedNode ? (
-              <div className="space-y-5 animate-fade-in">
+              <div key={selectedNode.id} className="space-y-5">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="badge badge-secondary font-mono text-xs">
+                  <span className="badge badge-secondary font-mono text-xs animate-fade-in opacity-0" style={{ animationDelay: "0ms", animationFillMode: "forwards" }}>
                     {selectedNode.id}
                   </span>
                   <a
                     href={`https://arxiv.org/abs/${selectedNode.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] flex items-center gap-1 transition-smooth"
+                    style={{ animationDelay: "100ms", animationFillMode: "forwards" }}
+                    className="text-xs font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] flex items-center gap-1 transition-smooth animate-fade-in opacity-0"
                   >
                     View on arXiv
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -571,11 +572,11 @@ export default function Home() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-[var(--text-primary)] leading-snug mb-3">
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] leading-snug mb-3 animate-fade-in opacity-0" style={{ animationDelay: "200ms", animationFillMode: "forwards" }}>
                     {selectedNode.label}
                   </h3>
 
-                  <div className="text-sm text-[var(--text-secondary)] leading-relaxed space-y-2">
+                  <div className="text-sm text-[var(--text-secondary)] leading-relaxed space-y-2 animate-fade-in opacity-0" style={{ animationDelay: "300ms", animationFillMode: "forwards" }}>
                     {selectedNode.content ? (
                       <p>{selectedNode.content}</p>
                     ) : (
@@ -587,7 +588,7 @@ export default function Home() {
                 </div>
 
                 <div className="pt-4 border-t border-[var(--border-secondary)] space-y-2">
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center justify-between text-xs animate-fade-in opacity-0" style={{ animationDelay: "400ms", animationFillMode: "forwards" }}>
                     <span className="text-[var(--text-tertiary)]">Status</span>
                     <span className="font-medium text-[var(--text-secondary)]">
                       {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "No Citations"}
