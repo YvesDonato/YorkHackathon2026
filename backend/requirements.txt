@@ -1,4 +1,5 @@
-fastapi[standard]
+fastapi
+uvicorn[standard]
 httpx
 motor
 python-dotenv

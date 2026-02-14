@@ -32,7 +32,7 @@ Notes:
 Optional backend environment variables:
 
 - `ACCESS_TOKEN_EXPIRE_MINUTES=1440`
-- `OPENAI_API_KEY=<optional>`
+- `GEMINI_API_KEY=<optional>`
 - `MONGODB_ENSURE_INDEXES=true` (default strict mode)
 - `MONGODB_CONNECT_RETRIES=3`
 - `MONGODB_CONNECT_RETRY_DELAY_SECONDS=3`

@@ -9,13 +9,15 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from auth import get_current_user, router as auth_router
+from auth import get_current_user, router as auth_router, validate_auth_config
 from database import close_db, connect_db, get_db
 from papers import (
     cosine_similarity,
     generate_embedding,
     generate_embeddings_batch,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
