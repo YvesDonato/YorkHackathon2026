@@ -31,15 +31,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  async redirects() {
-    return [
-      {
-        source: "/app",
-        destination: "/",
-        permanent: true,
-      },
-    ];
-  },
   async rewrites() {
     return [
       {
