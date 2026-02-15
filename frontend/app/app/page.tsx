@@ -892,8 +892,9 @@ export default function Home() {
       .attr("r", 36)
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId) return "#f59e0b";
+        if (node.id === selectedNodeId) return "#f472b6"; // Selected
         if (node.id === rootId) return "#d8b4fe"; // Light purple
-        return hasOutgoingLinks(node.id) ? "#a855f7" : "#404040";
+        return "#a855f7"; // Match 3D default for all other nodes (including leaves)
       })
       .style("filter", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId)
@@ -1126,12 +1127,24 @@ export default function Home() {
         }
         handleNodeMouseUp();
       });
-
     nodeSelection
       .call(dragBehavior as any)
       .on("mouseenter", function (event: MouseEvent, node: ApiGraphNode) {
         if (focusedNodeId) return;
-        tooltip.style("visibility", "visible").html(getTooltipHtml(node));
+
+        // Hover effect: Lighten color to match 3D highlight (#c084fc)
+        d3.select(this).select("circle.node-circle").attr("fill", "#c084fc");
+
+        const sim = bestSimilarity.get(node.id);
+        const simText =
+          sim != null
+            ? `<div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Similarity: ${(sim * 100).toFixed(0)}%</div>`
+            : "";
+        tooltip
+          .style("visibility", "visible")
+          .html(
+            `<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>${simText}`,
+          );
       })
       .on("mousemove", function (event: MouseEvent) {
         if (focusedNodeId) return;
@@ -1139,7 +1152,17 @@ export default function Home() {
           .style("left", event.clientX + 15 + "px")
           .style("top", event.clientY + 15 + "px");
       })
-      .on("mouseleave", function () {
+      .on("mouseleave", function (event: MouseEvent, node: ApiGraphNode) {
+        if (focusedNodeId) return;
+
+        // Restore original color
+        d3.select(this).select("circle.node-circle").attr("fill", (n: any) => {
+          if (n.id === expandingNodeId) return "#f59e0b";
+          if (n.id === selectedNodeId) return "#f472b6";
+          if (n.id === rootId) return "#d8b4fe";
+          return "#a855f7";
+        });
+
         handleNodeMouseUp();
         resetTouchLongPressState();
         tooltip.style("visibility", "hidden");
@@ -1261,18 +1284,26 @@ export default function Home() {
       });
     };
 
-    svg
+    const rootId =
+      rootNodeId ??
+      graphState.nodes.find((n) => n.is_root)?.id ??
+      graphState.nodes[0]?.id;
+
+    const nodeParams = svg
       .selectAll("g.graph-node")
       .transition()
-      .duration(300)
+      .duration(300);
+
+    // Opacity update
+    nodeParams
       .style("opacity", (node: any) => {
         if (!isFocusActive) return 1;
         return isConnected(node.id) ? 1 : 0.1;
-      })
+      });
+
+    // Selection Ring update
+    nodeParams
       .select("circle.selection-ring")
-      .transition()
-      .duration(300)
-      .ease(d3.easeQuadOut)
       .attr("stroke", (node: any) =>
         node.id === selectedNodeId ? "#f472b6" : "none",
       )
@@ -1281,6 +1312,16 @@ export default function Home() {
           ? "drop-shadow(0 0 8px rgba(244, 114, 182, 0.7))"
           : "none",
       );
+
+    // Node Circle Fill update
+    nodeParams
+      .select("circle.node-circle")
+      .attr("fill", (node: any) => {
+        if (node.id === expandingNodeId) return "#f59e0b";
+        if (node.id === selectedNodeId) return "#f472b6";
+        if (node.id === rootId) return "#d8b4fe";
+        return "#a855f7";
+      });
 
     svg
       .selectAll("g.zoom-container line")
@@ -1512,8 +1553,8 @@ export default function Home() {
           setRendererMode("2d");
         }}
         className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${activeRenderer === "2d"
-            ? "bg-[var(--accent-primary)]/20 text-white"
-            : "text-[var(--text-secondary)] hover:bg-white/10"
+          ? "bg-[var(--accent-primary)]/20 text-white"
+          : "text-[var(--text-secondary)] hover:bg-white/10"
           }`}
       >
         2D
@@ -1526,8 +1567,8 @@ export default function Home() {
             setRendererMode("3d");
           }}
           className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${activeRenderer === "3d"
-              ? "bg-[var(--accent-primary)]/20 text-white"
-              : "text-[var(--text-secondary)] hover:bg-white/10"
+            ? "bg-[var(--accent-primary)]/20 text-white"
+            : "text-[var(--text-secondary)] hover:bg-white/10"
             }`}
         >
           3D (Experimental)

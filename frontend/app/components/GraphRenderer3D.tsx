@@ -147,7 +147,7 @@ export default function GraphRenderer3D({
                     sprite.material.transparent = true;
                     sprite.renderOrder = 999;
                     sprite.color = "#ffffff";
-                    sprite.textHeight = isSelected ? 5 : (isRoot ? 3 : 3);
+                    sprite.textHeight = isSelected ? 4 : (isRoot ? 2 : 2);
 
                     // Position label above the node
                     const offset = 6 + 4;
