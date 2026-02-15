@@ -366,7 +366,7 @@ export default function Home() {
     nodeSelection
       .append("circle")
       .attr("class", "node-circle")
-      .attr("r", 26)
+      .attr("r", 36)
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId) return "#f59e0b";
         if (node.id === rootId) return "#ec4899";
@@ -383,7 +383,7 @@ export default function Home() {
     nodeSelection
       .append("circle")
       .attr("class", "selection-ring")
-      .attr("r", 30)
+      .attr("r", 40)
       .attr("fill", "none")
       .attr("stroke", (node: ApiGraphNode) =>
         node.id === selectedNodeId ? "#f472b6" : "none",
@@ -406,7 +406,7 @@ export default function Home() {
       .each(function (this: SVGTextElement, node: ApiGraphNode) {
         const text = d3.select(this);
         const words = node.label.split(/\s+/);
-        const maxCharsPerLine = 12;
+        const maxCharsPerLine = 15;
         const lines: string[] = [];
         let currentLine = "";
 
@@ -428,7 +428,7 @@ export default function Home() {
         lines.slice(0, 2).forEach((line, i) => {
           text.append("tspan")
             .attr("x", 0)
-            .attr("dy", i === 0 ? "-0.3em" : "1.1em")
+            .attr("dy", i === 0 ? "0.1em" : "1.2em")
             .text(line);
         });
       });
@@ -499,7 +499,7 @@ export default function Home() {
           cy,
         ).strength((node: any) => (node.id === rootId ? 1 : 1.2)),
       )
-      .force("collision", d3.forceCollide().radius(42));
+      .force("collision", d3.forceCollide().radius(60));
 
     let tooltip = d3.select("body").select(".graph-tooltip") as any;
     if (tooltip.empty()) {
@@ -1074,43 +1074,43 @@ export default function Home() {
 
         {/* BOTTOM LEFT: Controls Help */}
         <div className="mt-auto pointer-events-auto self-start">
-          <div className="glass-card inline-flex items-center gap-3 px-4 py-2 rounded-full text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
+          <div className="glass-card inline-flex items-center gap-3 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
             {activeRenderer === "3d" ? (
               <>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
                   Left click to rotate
                 </div>
                 <div className="w-px h-3 bg-white/10"></div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
                   Scroll to zoom
                 </div>
                 <div className="w-px h-3 bg-white/10"></div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
                   Click node to fly
                 </div>
               </>
             ) : (
               <>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
                   Scroll to zoom
                 </div>
                 <div className="w-px h-3 bg-white/10"></div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
                   Drag to pan
                 </div>
                 <div className="w-px h-3 bg-white/10"></div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
                   Hold to focus
                 </div>
                 <div className="w-px h-3 bg-white/10"></div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  <span className="w-1.5 h-1.5 bg-amber-500"></span>
                   Click leaf to expand
                 </div>
               </>

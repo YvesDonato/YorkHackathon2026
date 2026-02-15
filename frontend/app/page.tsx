@@ -23,13 +23,13 @@ const features = [
 export default function HomePage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,#1f1230_0%,#0a0a0a_40%,#050505_100%)] text-[var(--text-primary)]">
-      <div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-[#a855f7]/25 blur-3xl" />
-      <div className="pointer-events-none absolute -right-24 bottom-16 h-72 w-72 rounded-full bg-[#ec4899]/20 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 bg-[#a855f7]/25 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 bottom-16 h-72 w-72 bg-[#ec4899]/20 blur-3xl" />
 
       <header className="relative z-10 border-b border-white/10">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="relative h-12 w-12 overflow-hidden rounded-xl shadow-lg">
+            <div className="relative h-12 w-12 overflow-hidden shadow-lg">
               <Image
                 src="/prismarineLogo.png"
                 alt="Prismarine logo"
@@ -46,7 +46,7 @@ export default function HomePage() {
 
           <Link
             href="/login"
-            className="rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent-primary)] hover:text-white"
+            className="border border-white/20 px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent-primary)] hover:text-white"
           >
             Login
           </Link>
@@ -55,7 +55,7 @@ export default function HomePage() {
 
       <main className="relative z-10 mx-auto w-full max-w-6xl px-6 pb-16 pt-20 md:pb-24 md:pt-28">
         <section className="mx-auto max-w-3xl text-center">
-          <p className="mb-4 inline-flex items-center rounded-full border border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-primary-hover)]">
+          <p className="mb-4 inline-flex items-center border border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-primary-hover)]">
             Discover Research Connections Faster
           </p>
           <h1 className="text-4xl font-black leading-tight md:text-6xl">
@@ -72,13 +72,13 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/login"
-              className="inline-flex min-w-[180px] items-center justify-center rounded-lg bg-gradient-to-r from-[#a855f7] to-[#ec4899] px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(168,85,247,0.45)]"
+              className="inline-flex min-w-[180px] items-center justify-center bg-gradient-to-r from-[#a855f7] to-[#ec4899] px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(168,85,247,0.45)]"
             >
               Get Started
             </Link>
             <Link
               href="/signup"
-              className="inline-flex min-w-[180px] items-center justify-center rounded-lg border border-white/20 px-6 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent-primary)] hover:text-white"
+              className="inline-flex min-w-[180px] items-center justify-center border border-white/20 px-6 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent-primary)] hover:text-white"
             >
               Create Account
             </Link>

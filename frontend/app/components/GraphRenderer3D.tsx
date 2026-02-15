@@ -77,15 +77,39 @@ export default function GraphRenderer3D({
                     return isHighlighted ? "#d8b4fe" : "#a855f7";
                 }}
                 onNodeHover={(node: any) => onHoverNodeIdChange(node ? node.id : null)}
-                nodeRelSize={6}
+                nodeRelSize={10}
                 nodeThreeObjectExtend={true}
                 nodeThreeObject={(node: any) => {
-                    const sprite = new SpriteText(node.label);
+                    const words = node.label.split(/\s+/);
+                    const maxCharsPerLine = 15;
+                    const lines: string[] = [];
+                    let currentLine = "";
+
+                    for (const word of words) {
+                        const testLine = currentLine ? `${currentLine} ${word}` : word;
+                        if (testLine.length <= maxCharsPerLine) {
+                            currentLine = testLine;
+                        } else {
+                            if (currentLine) lines.push(currentLine);
+                            currentLine = word;
+                        }
+                    }
+                    if (currentLine && lines.length < 2) lines.push(currentLine);
+
+                    if (lines.length > 2 || (lines.length === 2 && currentLine && currentLine !== lines[1])) {
+                        lines[1] = lines[1].slice(0, 12) + "...";
+                    }
+                    const wrappedLabel = lines.slice(0, 2).join("\n");
+
+                    const sprite = new SpriteText(wrappedLabel);
                     sprite.material.depthWrite = false;
-                    sprite.color = node.id === selectedNodeId ? "#fff" : "rgba(255, 255, 255, 0.8)";
+                    sprite.material.depthTest = false;
+                    sprite.material.transparent = true;
+                    sprite.renderOrder = 999; // Render on top of everything Else
+                    sprite.color = "#ffffff";
                     sprite.textHeight = node.id === selectedNodeId ? 6 : 4;
-                    sprite.center.y = 0;
-                    sprite.position.y = 12;
+                    sprite.center.y = 0.5;
+                    sprite.position.y = 0;
                     return sprite;
                 }}
                 linkColor={(link: any) => {
