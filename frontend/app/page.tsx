@@ -31,7 +31,7 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <div className="relative h-12 w-12 overflow-hidden shadow-lg">
               <Image
-                src="/prismarineLogo.png"
+                src="/prismarinelogo.png"
                 alt="Prismarine logo"
                 fill
                 sizes="48px"
