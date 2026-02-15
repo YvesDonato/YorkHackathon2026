@@ -403,11 +403,9 @@ export default function Home() {
         if (node.id === rootId) return "#ec4899";
         return hasOutgoingLinks(node.id) ? "#a855f7" : "#404040";
       })
-      .attr("stroke", "#525252")
-      .attr("stroke-width", 2)
       .style("filter", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId) return "drop-shadow(0 0 14px rgba(245, 158, 11, 0.7))";
-        if (node.id === rootId) return "drop-shadow(0 0 12px rgba(236, 72, 153, 0.6))";
+        if (node.id === rootId) return "drop-shadow(0 0 16px #ec489999)";
         return hasOutgoingLinks(node.id) ? "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))" : "none";
       });
 
@@ -419,7 +417,7 @@ export default function Home() {
       .attr("stroke", (node: ApiGraphNode) =>
         node.id === selectedNodeId ? "#f472b6" : "none",
       )
-      .attr("stroke-width", 3)
+      .attr("stroke-width", 0)
       .attr("stroke-opacity", 0.9)
       .style("filter", (node: ApiGraphNode) =>
         node.id === selectedNodeId
@@ -550,8 +548,8 @@ export default function Home() {
         .style("box-shadow", "0 10px 15px -3px rgba(0, 0, 0, 0.5)")
         .style("pointer-events", "none")
         .style("z-index", "9999")
-        .style("backdrop-filter", "blur(12px)")
-        .style("transition", "opacity 0.2s ease");
+        .style("backdrop-filter", "blur(6px)")
+        .style("transition", "opacity 0.8s ease");
     }
 
     nodeSelection.on("click", (event: MouseEvent, node: ApiGraphNode) => {
@@ -799,7 +797,7 @@ export default function Home() {
           {/* LEFT: Branding & Sessions */}
           <div className="pointer-events-auto flex flex-col gap-4 max-w-sm">
             {/* Logo */}
-            <div className="glass-card flex items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
+            <a href="/" className="glass-card flex items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-lg">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -808,7 +806,7 @@ export default function Home() {
               <h1 className="text-lg font-bold bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
                 Prismarine
               </h1>
-            </div>
+            </a>
 
             {/* Sessions List */}
             <aside className="glass-card w-full max-h-40 overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0a]/80 p-3 shadow-2xl backdrop-blur-xl sm:max-h-52 sm:p-4 lg:w-72 lg:max-h-[60vh]">
