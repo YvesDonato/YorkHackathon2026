@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import SummaryAudioPlayer from "@/app/components/SummaryAudioPlayer";
 import { fetchPaper, type PaperReference, type PaperResponse } from "@/lib/api";
 
 const formatError = (error: unknown): string =>
@@ -132,6 +133,8 @@ export default function NodePage() {
               <p className="text-sm leading-7 text-slate-700">
                 {paper.summary || "No summary provided."}
               </p>
+
+              <SummaryAudioPlayer summary={paper.summary ?? ""} />
             </section>
 
             <section>

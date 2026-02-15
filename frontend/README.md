@@ -21,7 +21,7 @@ BACKEND_INTERNAL_URL=http://localhost:8000
 1. Start backend (from `backend/`):
 
 ```bash
-uvicorn arxiv_scraper:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 2. Start frontend (from `frontend/`):
