@@ -65,7 +65,7 @@ export default function SignupPage() {
             localStorage.setItem('user', JSON.stringify(data.user));
 
             // Redirect to application page
-            router.replace('/app');
+            router.replace('/graph');
         } catch (err: any) {
             setError(err.message || "Signup failed. Please try again.");
         } finally {

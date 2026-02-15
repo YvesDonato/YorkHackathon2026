@@ -37,7 +37,7 @@ export default function LoginPage() {
             localStorage.setItem('user', JSON.stringify(data.user));
 
             // Redirect to application page
-            router.replace('/app');
+            router.replace('/graph');
         } catch (err) {
             setError("Login failed. Please try again.");
         } finally {
