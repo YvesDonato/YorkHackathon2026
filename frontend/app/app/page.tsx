@@ -9,6 +9,7 @@ import {
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -61,6 +62,8 @@ const DEFAULT_PDF_ASPECT_RATIO =
 const MIN_PDF_PANEL_WIDTH = 320;
 const MIN_PDF_PANEL_HEIGHT = 300;
 const PDF_WINDOW_MARGIN = 8;
+const TOUCH_LONG_PRESS_MS = 350;
+const TOUCH_MOVE_CANCEL_PX = 10;
 const RENDERER_MODE_STORAGE_KEY = "prismarine_renderer_mode";
 const ENABLE_3D_EXPERIMENTAL =
   process.env.NEXT_PUBLIC_ENABLE_3D_EXPERIMENTAL === "true";
@@ -149,6 +152,12 @@ export default function Home() {
     mouseY: number;
     width: number;
     height: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const pdfHeaderTouchHoldTimerRef = useRef<number | null>(null);
+  const pdfHeaderTouchStartRef = useRef<{
+    pointerId: number;
     x: number;
     y: number;
   } | null>(null);
@@ -350,6 +359,21 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isPdfFullscreen]);
 
+  const clearPdfHeaderTouchHold = useCallback(() => {
+    if (pdfHeaderTouchHoldTimerRef.current !== null) {
+      window.clearTimeout(pdfHeaderTouchHoldTimerRef.current);
+      pdfHeaderTouchHoldTimerRef.current = null;
+    }
+    pdfHeaderTouchStartRef.current = null;
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearPdfHeaderTouchHold();
+    },
+    [clearPdfHeaderTouchHold],
+  );
+
   useEffect(() => {
     if (!activeResizeHandle) return;
 
@@ -357,24 +381,24 @@ export default function Home() {
       activeResizeHandle === "move"
         ? "move"
         : activeResizeHandle === "right" || activeResizeHandle === "left"
-        ? "ew-resize"
-        : activeResizeHandle === "bottom"
-          ? "ns-resize"
-          : activeResizeHandle === "corner-right"
-            ? "nwse-resize"
-            : "nesw-resize";
+          ? "ew-resize"
+          : activeResizeHandle === "bottom"
+            ? "ns-resize"
+            : activeResizeHandle === "corner-right"
+              ? "nwse-resize"
+              : "nesw-resize";
 
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = cursor;
     document.body.style.userSelect = "none";
 
-    const onMouseMove = (event: MouseEvent) => {
+    const handleResizeDrag = (clientX: number, clientY: number) => {
       const start = resizeStartRef.current;
       if (!start) return;
 
-      const deltaX = event.clientX - start.mouseX;
-      const deltaY = event.clientY - start.mouseY;
+      const deltaX = clientX - start.mouseX;
+      const deltaY = clientY - start.mouseY;
       const { maxWidth, maxHeight } = getPdfPanelBounds();
       const ratio =
         Number.isFinite(pdfAspectRatio) && pdfAspectRatio > 0
@@ -472,17 +496,38 @@ export default function Home() {
       setPdfWindowPosition(clampedPosition);
     };
 
-    const onMouseUp = () => {
+    const endResizeDrag = () => {
       setActiveResizeHandle(null);
       resizeStartRef.current = null;
     };
 
+    const onMouseMove = (event: MouseEvent) => {
+      handleResizeDrag(event.clientX, event.clientY);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      handleResizeDrag(event.clientX, event.clientY);
+    };
+    const onMouseUp = () => {
+      endResizeDrag();
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      endResizeDrag();
+    };
+
     window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
     };
@@ -495,15 +540,11 @@ export default function Home() {
     viewport.width,
   ]);
 
-  const handlePdfResizeMouseDown = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>, handle: ResizeHandle) => {
-      if (isPdfFullscreen) return;
-      event.preventDefault();
-      event.stopPropagation();
-
+  const startPdfResize = useCallback(
+    (clientX: number, clientY: number, handle: ResizeHandle) => {
       resizeStartRef.current = {
-        mouseX: event.clientX,
-        mouseY: event.clientY,
+        mouseX: clientX,
+        mouseY: clientY,
         width: pdfPanelSize.width,
         height: pdfPanelSize.height,
         x: pdfWindowPosition.x,
@@ -512,12 +553,21 @@ export default function Home() {
       setActiveResizeHandle(handle);
     },
     [
-      isPdfFullscreen,
       pdfPanelSize.height,
       pdfPanelSize.width,
       pdfWindowPosition.x,
       pdfWindowPosition.y,
     ],
+  );
+
+  const handlePdfResizeMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, handle: ResizeHandle) => {
+      if (isPdfFullscreen) return;
+      event.preventDefault();
+      event.stopPropagation();
+      startPdfResize(event.clientX, event.clientY, handle);
+    },
+    [isPdfFullscreen, startPdfResize],
   );
 
   const handlePdfHeaderMouseDown = useCallback(
@@ -529,13 +579,67 @@ export default function Home() {
     [handlePdfResizeMouseDown],
   );
 
+  const handlePdfHeaderPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch" || isPdfFullscreen) return;
+
+      const target = event.target as HTMLElement;
+      if (target.closest("a,button")) return;
+
+      clearPdfHeaderTouchHold();
+      pdfHeaderTouchStartRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      pdfHeaderTouchHoldTimerRef.current = window.setTimeout(() => {
+        const start = pdfHeaderTouchStartRef.current;
+        if (!start) return;
+        startPdfResize(start.x, start.y, "move");
+        clearPdfHeaderTouchHold();
+      }, TOUCH_LONG_PRESS_MS);
+    },
+    [clearPdfHeaderTouchHold, isPdfFullscreen, startPdfResize],
+  );
+
+  const handlePdfHeaderPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch" || activeResizeHandle === "move") return;
+      const touchStart = pdfHeaderTouchStartRef.current;
+      if (!touchStart || touchStart.pointerId !== event.pointerId) return;
+
+      const movedDistance = Math.hypot(
+        event.clientX - touchStart.x,
+        event.clientY - touchStart.y,
+      );
+      if (movedDistance > TOUCH_MOVE_CANCEL_PX) {
+        clearPdfHeaderTouchHold();
+      }
+    },
+    [activeResizeHandle, clearPdfHeaderTouchHold],
+  );
+
+  const handlePdfHeaderPointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      clearPdfHeaderTouchHold();
+    },
+    [clearPdfHeaderTouchHold],
+  );
+
   const handleClosePdfViewer = useCallback(() => {
     setViewingPdfId(null);
     setIsPdfFullscreen(false);
     setActiveResizeHandle(null);
     setPdfAspectRatio(DEFAULT_PDF_ASPECT_RATIO);
     resizeStartRef.current = null;
-  }, []);
+    clearPdfHeaderTouchHold();
+  }, [clearPdfHeaderTouchHold]);
 
   const handlePdfAspectRatioChange = useCallback((ratio: number) => {
     if (!Number.isFinite(ratio) || ratio <= 0) return;
@@ -788,14 +892,14 @@ export default function Home() {
       .attr("r", 36)
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId) return "#f59e0b";
-        if (node.id === rootId) return "#ec4899";
+        if (node.id === rootId) return "#d8b4fe"; // Light purple
         return hasOutgoingLinks(node.id) ? "#a855f7" : "#404040";
       })
       .style("filter", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId)
           return "drop-shadow(0 0 14px rgba(245, 158, 11, 0.7))";
         if (node.id === rootId)
-          return "drop-shadow(0 0 12px rgba(236, 72, 153, 0.6))";
+          return "drop-shadow(0 0 12px rgba(216, 180, 254, 0.6))"; // Light purple shadow
         return hasOutgoingLinks(node.id)
           ? "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))"
           : "none";
@@ -949,8 +1053,53 @@ export default function Home() {
         .style("transition", "opacity 0.8s ease");
     }
 
+    const getTooltipHtml = (node: ApiGraphNode): string => {
+      const sim = bestSimilarity.get(node.id);
+      const simText =
+        sim != null
+          ? `<div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Similarity: ${(sim * 100).toFixed(0)}%</div>`
+          : "";
+      return `<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>${simText}`;
+    };
+
+    const showTooltipForNode = (
+      node: ApiGraphNode,
+      clientX: number,
+      clientY: number,
+    ) => {
+      tooltip
+        .style("visibility", "visible")
+        .html(getTooltipHtml(node))
+        .style("left", clientX + 15 + "px")
+        .style("top", clientY + 15 + "px");
+    };
+
+    let touchLongPressTimer: number | null = null;
+    let touchPressedNode: ApiGraphNode | null = null;
+    let touchPointerId: number | null = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let suppressNextTouchClickNodeId: string | null = null;
+
+    const clearTouchLongPressTimer = () => {
+      if (touchLongPressTimer !== null) {
+        window.clearTimeout(touchLongPressTimer);
+        touchLongPressTimer = null;
+      }
+    };
+
+    const resetTouchLongPressState = () => {
+      clearTouchLongPressTimer();
+      touchPressedNode = null;
+      touchPointerId = null;
+    };
+
     nodeSelection.on("click", (event: MouseEvent, node: ApiGraphNode) => {
       event.stopPropagation();
+      if (suppressNextTouchClickNodeId === node.id) {
+        suppressNextTouchClickNodeId = null;
+        return;
+      }
       handleNodeClick(node.id);
     });
 
@@ -982,16 +1131,7 @@ export default function Home() {
       .call(dragBehavior as any)
       .on("mouseenter", function (event: MouseEvent, node: ApiGraphNode) {
         if (focusedNodeId) return;
-        const sim = bestSimilarity.get(node.id);
-        const simText =
-          sim != null
-            ? `<div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Similarity: ${(sim * 100).toFixed(0)}%</div>`
-            : "";
-        tooltip
-          .style("visibility", "visible")
-          .html(
-            `<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>${simText}`,
-          );
+        tooltip.style("visibility", "visible").html(getTooltipHtml(node));
       })
       .on("mousemove", function (event: MouseEvent) {
         if (focusedNodeId) return;
@@ -1001,6 +1141,61 @@ export default function Home() {
       })
       .on("mouseleave", function () {
         handleNodeMouseUp();
+        resetTouchLongPressState();
+        tooltip.style("visibility", "hidden");
+      })
+      .on("pointerdown", function (event: PointerEvent, node: ApiGraphNode) {
+        if (event.pointerType !== "touch") return;
+        resetTouchLongPressState();
+        touchPressedNode = node;
+        touchPointerId = event.pointerId;
+        touchStartX = event.clientX;
+        touchStartY = event.clientY;
+
+        touchLongPressTimer = window.setTimeout(() => {
+          if (!touchPressedNode) return;
+          showTooltipForNode(touchPressedNode, touchStartX, touchStartY);
+          suppressNextTouchClickNodeId = touchPressedNode.id;
+          touchLongPressTimer = null;
+        }, TOUCH_LONG_PRESS_MS);
+      })
+      .on("pointermove", function (event: PointerEvent) {
+        if (event.pointerType !== "touch") return;
+        if (touchPointerId !== event.pointerId) return;
+
+        if (touchLongPressTimer !== null) {
+          const movedDistance = Math.hypot(
+            event.clientX - touchStartX,
+            event.clientY - touchStartY,
+          );
+          if (movedDistance > TOUCH_MOVE_CANCEL_PX) {
+            resetTouchLongPressState();
+          }
+          return;
+        }
+
+        if (touchPressedNode) {
+          tooltip
+            .style("left", event.clientX + 15 + "px")
+            .style("top", event.clientY + 15 + "px");
+        }
+      })
+      .on("pointerup", function (event: PointerEvent) {
+        if (event.pointerType !== "touch") return;
+        if (touchPointerId !== event.pointerId) return;
+        resetTouchLongPressState();
+        tooltip.style("visibility", "hidden");
+      })
+      .on("pointercancel", function (event: PointerEvent) {
+        if (event.pointerType !== "touch") return;
+        if (touchPointerId !== event.pointerId) return;
+        resetTouchLongPressState();
+        tooltip.style("visibility", "hidden");
+      })
+      .on("pointerleave", function (event: PointerEvent) {
+        if (event.pointerType !== "touch") return;
+        if (touchPointerId !== event.pointerId) return;
+        resetTouchLongPressState();
         tooltip.style("visibility", "hidden");
       });
 
@@ -1021,6 +1216,7 @@ export default function Home() {
 
     return () => {
       simulation.stop();
+      clearTouchLongPressTimer();
       d3.select("body").select(".graph-tooltip").remove();
     };
   }, [
@@ -1315,11 +1511,10 @@ export default function Home() {
           setRendererNotice(null);
           setRendererMode("2d");
         }}
-        className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
-          activeRenderer === "2d"
+        className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${activeRenderer === "2d"
             ? "bg-[var(--accent-primary)]/20 text-white"
             : "text-[var(--text-secondary)] hover:bg-white/10"
-        }`}
+          }`}
       >
         2D
       </button>
@@ -1330,11 +1525,10 @@ export default function Home() {
             setRendererNotice(null);
             setRendererMode("3d");
           }}
-          className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
-            activeRenderer === "3d"
+          className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${activeRenderer === "3d"
               ? "bg-[var(--accent-primary)]/20 text-white"
               : "text-[var(--text-secondary)] hover:bg-white/10"
-          }`}
+            }`}
         >
           3D (Experimental)
         </button>
@@ -1433,11 +1627,11 @@ export default function Home() {
       {/* UI LAYER (Floating Overlays) */}
       <div className="fixed inset-0 z-10 pointer-events-none flex flex-col gap-3 overflow-y-auto overscroll-contain p-3 pb-6 sm:gap-4 sm:p-6 lg:overflow-visible lg:p-8">
         {/* TOP ROW */}
-        <div className="flex flex-wrap items-start justify-between gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-6 lg:grid lg:grid-cols-[max-content_minmax(0,1fr)_20rem] lg:items-start lg:justify-normal">
           {/* LEFT: Branding & Sessions */}
-          <div className="pointer-events-auto order-2 flex w-full max-w-none flex-col gap-4 lg:order-none lg:w-auto lg:max-w-sm">
+          <div className="pointer-events-auto order-2 flex w-full max-w-none flex-col gap-4 lg:order-none lg:col-start-1 lg:w-fit lg:max-w-none">
             {/* Logo */}
-            <a href="/" className="hidden lg:flex glass-card items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
+            <a href="/" className="hidden lg:flex lg:h-14 lg:w-72 glass-card items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
               <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-gradient-to-br from-[#a855f7]/20 to-[#ec4899]/20 shadow-lg ring-1 ring-white/20">
                 <Image
                   src="/prismarinelogo.png"
@@ -1454,7 +1648,7 @@ export default function Home() {
             </a>
 
             {/* Sessions List */}
-            <aside className="glass-card w-full max-h-40 overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0a]/80 p-3 shadow-2xl backdrop-blur-xl sm:max-h-52 sm:p-4 lg:w-72 lg:max-h-[60vh]">
+            <aside className="glass-card w-full rounded-2xl border border-white/10 bg-[#0a0a0a]/80 p-3 shadow-2xl backdrop-blur-xl sm:p-4 lg:w-72">
               <div className="flex items-center gap-2 mb-3 px-1">
                 <svg
                   className="w-4 h-4 text-[var(--accent-primary)]"
@@ -1507,11 +1701,10 @@ export default function Home() {
                   {sessions.map((session) => (
                     <div
                       key={session.id}
-                      className={`p-2.5 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${
-                        currentSessionId === session.id
-                          ? "border-[var(--accent-primary)] bg-[var(--accent-primary)]/10"
-                          : "border-transparent hover:bg-white/5"
-                      }`}
+                      className={`p-2.5 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${currentSessionId === session.id
+                        ? "border-[var(--accent-primary)] bg-[var(--accent-primary)]/10"
+                        : "border-transparent hover:bg-white/5"
+                        }`}
                       onClick={() => void loadSessionGraph(session.id)}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1555,9 +1748,9 @@ export default function Home() {
           </div>
 
           {/* CENTER: Search Bar */}
-          <div className="pointer-events-auto order-1 w-full max-w-none lg:order-none lg:flex-1 lg:max-w-xl">
+          <div className="pointer-events-auto order-1 w-full max-w-none lg:order-none lg:col-start-2 lg:min-w-0 lg:max-w-none">
             <form
-              className="glass-card flex flex-wrap items-center gap-2 rounded-xl border border-white/10 p-2 shadow-2xl backdrop-blur-xl transition-colors focus-within:border-[var(--accent-primary)] sm:flex-nowrap sm:p-1.5 sm:pl-4"
+              className="glass-card min-h-14 h-auto flex flex-wrap items-start gap-2 rounded-xl border border-white/10 p-2 shadow-2xl backdrop-blur-xl transition-colors focus-within:border-[var(--accent-primary)] sm:h-14 sm:flex-nowrap sm:items-center sm:p-1.5 sm:pl-4"
               onSubmit={handleSeedSubmit}
             >
               <svg
@@ -1610,12 +1803,7 @@ export default function Home() {
           </div>
 
           {/* RIGHT: Stats & Details / PDF Viewer / 3D Toggle */}
-          <div className="pointer-events-auto order-3 flex w-full flex-col items-end gap-4 lg:order-none lg:w-80">
-            {/* View Mode Toggle */}
-            <div className="hidden lg:flex glass-card items-center gap-1 rounded-lg border border-white/10 p-1 shadow-lg backdrop-blur-md">
-              {rendererToggleButtons}
-            </div>
-
+          <div className="pointer-events-auto order-3 flex w-full flex-col items-end gap-4 lg:order-none lg:col-start-3 lg:w-full">
             {rendererNotice && (
               <div className="glass-card px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 text-[11px] font-medium">
                 {rendererNotice}
@@ -1769,53 +1957,58 @@ export default function Home() {
         </div>
 
         {/* BOTTOM LEFT: Controls Help */}
-        <div className="mt-auto pointer-events-auto self-start"> 
-          {/* Stats Badge */}
-          <div className="hidden lg:flex glass-card w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
-            <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-            {graphState.nodes.length} nodes · {graphState.links.length} links
-          </div>
-          <div className="hidden lg:inline-flex glass-card items-center gap-3 mt-4 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
-            {activeRenderer === "3d" ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Left click to rotate
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Scroll to zoom
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Click node to fly
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Scroll to zoom
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Drag to pan
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Hold to focus
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-amber-500"></span>
-                  Click leaf to expand
-                </div>
-              </>
-            )}
+        <div className="mt-auto pointer-events-auto self-start">
+          <div className="hidden lg:flex items-center gap-3">
+            {/* Stats Badge */}
+            <div className="glass-card flex h-10 w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md whitespace-nowrap lg:self-auto">
+              <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+              {graphState.nodes.length} nodes · {graphState.links.length} links
+            </div>
+            <div className="glass-card flex h-10 w-fit items-center gap-3 rounded-lg border border-white/10 bg-[#0a0a0a]/60 px-4 text-[10px] font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl whitespace-nowrap">
+              {activeRenderer === "3d" ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Left click to rotate
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Scroll to zoom
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Click node to fly
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Scroll to zoom
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Drag to pan
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Hold to focus
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-amber-500"></span>
+                    Click leaf to expand
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="glass-card flex h-10 items-center gap-1 rounded-lg border border-white/10 p-1 shadow-lg backdrop-blur-md">
+              {rendererToggleButtons}
+            </div>
           </div>
         </div>
       </div>
@@ -1825,7 +2018,6 @@ export default function Home() {
           {rendererToggleButtons}
         </div>
       </div>
-
       {selectedNode && !viewingPdfId && isMobileDetailsOpen && (
         <div className="fixed inset-0 z-30 lg:hidden">
           <button
@@ -1893,6 +2085,10 @@ export default function Home() {
             <div
               className="flex items-center justify-between border-b border-white/10 px-4 py-3"
               onMouseDown={handlePdfHeaderMouseDown}
+              onPointerDown={handlePdfHeaderPointerDown}
+              onPointerMove={handlePdfHeaderPointerMove}
+              onPointerUp={handlePdfHeaderPointerEnd}
+              onPointerCancel={handlePdfHeaderPointerEnd}
             >
               <div className="flex min-w-0 items-center gap-2">
                 <svg

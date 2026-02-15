@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import SpriteText from "three-spritetext";
+import * as THREE from "three";
 import type { ApiGraphLink, ApiGraphNode } from "@/lib/api";
 import GraphErrorBoundary from "@/app/components/GraphErrorBoundary";
 
@@ -65,6 +66,30 @@ export default function GraphRenderer3D({
         };
     }, []);
 
+    // Helper to create materials
+    const materials = useMemo(() => {
+        const createMaterial = (color: string) =>
+            new THREE.MeshPhysicalMaterial({
+                color,
+                metalness: 0.1,
+                roughness: 0.3,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1,
+            });
+
+        return {
+            root: createMaterial("#d8b4fe"), // Light purple (lighter shade of #a855f7)
+            rootHighlight: createMaterial("#f5f3ff"), // Very light purple
+            default: createMaterial("#a855f7"),
+            highlight: createMaterial("#c084fc"),
+            selected: createMaterial("#f472b6"),
+        };
+    }, []);
+
+    const geometries = useMemo(() => ({
+        sphere: new THREE.SphereGeometry(6), // Base size (scaled by nodeVal)
+    }), []);
+
     return (
         <GraphErrorBoundary onError={(error) => onRuntimeError?.(error)}>
             <ForceGraph3D
@@ -75,19 +100,26 @@ export default function GraphRenderer3D({
                 backgroundColor="rgba(0,0,0,0)"
                 nodeLabel="label"
                 enableNodeDrag={false}
-                nodeColor={(node: any) => {
-                    const isRoot = node.id === rootNodeId;
-                    const isHighlighted = node.id === hoveredNodeId || node.id === selectedNodeId;
-
-                    if (isRoot) {
-                        return isHighlighted ? "#f9a8d4" : "#ec4899";
-                    }
-                    return isHighlighted ? "#d8b4fe" : "#a855f7";
-                }}
-                onNodeHover={(node: any) => onHoverNodeIdChange(node ? node.id : null)}
-                nodeRelSize={10}
-                nodeThreeObjectExtend={true}
+                nodeThreeObjectExtend={false}
                 nodeThreeObject={(node: any) => {
+                    const isRoot = node.id === rootNodeId;
+                    const isSelected = node.id === selectedNodeId;
+                    const isHovered = node.id === hoveredNodeId;
+                    const isHighlighted = isHovered || isSelected;
+
+                    // 1. Create the main node mesh
+                    let material = materials.default;
+                    if (isRoot) material = isHighlighted ? materials.rootHighlight : materials.root;
+                    else if (isSelected) material = materials.selected;
+                    else if (isHighlighted) material = materials.highlight;
+
+                    const mesh = new THREE.Mesh(geometries.sphere, material);
+
+                    // Scale nodes (Uniform size for all nodes as per user request)
+                    const scale = 1;
+                    mesh.scale.set(scale, scale, scale);
+
+                    // 2. Create the label sprite
                     const words = node.label.split(/\s+/);
                     const maxCharsPerLine = 15;
                     const lines: string[] = [];
@@ -113,13 +145,43 @@ export default function GraphRenderer3D({
                     sprite.material.depthWrite = false;
                     sprite.material.depthTest = false;
                     sprite.material.transparent = true;
-                    sprite.renderOrder = 999; // Render on top of everything Else
+                    sprite.renderOrder = 999;
                     sprite.color = "#ffffff";
-                    sprite.textHeight = node.id === selectedNodeId ? 6 : 4;
-                    sprite.center.y = 0.5;
-                    sprite.position.y = 0;
-                    return sprite;
+                    sprite.textHeight = isSelected ? 5 : (isRoot ? 3 : 3);
+
+                    // Position label above the node
+                    const offset = 6 + 4;
+                    sprite.position.set(0, offset, 0);
+
+                    // 3. Group them
+                    const group = new THREE.Group();
+                    group.add(mesh);
+                    group.add(sprite);
+
+                    // 4. Highlight Ring (Glow Effect) for Root or Selected
+                    if (isRoot || isSelected) {
+                        const ringGeo = new THREE.RingGeometry(8 * scale, 9 * scale, 32);
+                        const ringMat = new THREE.MeshBasicMaterial({
+                            color: isRoot ? "#d8b4fe" : "#f472b6",
+                            side: THREE.DoubleSide,
+                            transparent: true,
+                            opacity: 0.5,
+                        });
+                        const ring = new THREE.Mesh(ringGeo, ringMat);
+                        // Make ring face camera always?
+                        // Actually Sprite looks best for glow, but Ring is okay if we orient it.
+                        // For simplicity, let's just make it a billboard or sprite if we want.
+                        // Using a simple point light for shading emphasis
+                        if (isRoot) {
+                            const light = new THREE.PointLight(0xd8b4fe, 2, 50);
+                            group.add(light);
+                        }
+                    }
+
+                    return group;
                 }}
+                nodeVal={() => 10}
+                onNodeHover={(node: any) => onHoverNodeIdChange(node ? node.id : null)}
                 linkColor={(link: any) => {
                     const source = toNodeId(link.source);
                     const target = toNodeId(link.target);

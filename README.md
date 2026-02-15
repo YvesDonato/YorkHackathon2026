@@ -26,7 +26,7 @@ Prismarine is a research exploration tool that transforms flat lists of papers i
 
 ### 🎨 UX & Design (10%) - *Intuitive & Aesthetic*
 - **Immersive Dark UI:** A premium aesthetic with glassmorphism and fluid animations using `framer-motion`.
-- **Interactive 3D Space:** Zoom, rotate, and click nodes to explore the citations universe.
+- **Interactive 3D Space:** Zoom, rotate, and click nodes to explore the citations universe. Built using D3.js and Three.js.
 - **Responsive Design:** Works on all devices including web and mobile.
 
 ## Architecture
