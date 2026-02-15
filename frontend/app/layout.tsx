@@ -14,8 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Prismarine - arXiv Citation Network",
+  title: "Prismarine",
   description: "Explore research papers and citation networks with Prismarine. Visualize connections between arXiv papers in an interactive graph.",
+  icons: {
+    icon: "/prismarinelogo.png",
+    shortcut: "/prismarinelogo.png",
+    apple: "/prismarinelogo.png",
+  },
 };
 
 export default function RootLayout({
