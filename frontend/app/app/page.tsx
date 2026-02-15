@@ -764,10 +764,10 @@ export default function Home() {
       <div className="fixed inset-0 z-10 pointer-events-none flex flex-col gap-3 overflow-y-auto overscroll-contain p-3 pb-6 sm:gap-4 sm:p-6 lg:overflow-visible lg:p-8">
 
         {/* TOP ROW */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-6">
 
           {/* LEFT: Branding & Sessions */}
-          <div className="pointer-events-auto order-1 flex w-full flex-col gap-3 sm:gap-4 lg:max-w-sm">
+          <div className="pointer-events-auto flex flex-col gap-4 max-w-sm">
             {/* Logo */}
             <div className="glass-card flex items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-lg">
@@ -840,7 +840,7 @@ export default function Home() {
           </div>
 
           {/* CENTER: Search Bar */}
-          <div className="pointer-events-auto order-2 w-full lg:max-w-xl lg:flex-1">
+          <div className="pointer-events-auto flex-1 max-w-xl">
             <form className="glass-card flex flex-wrap items-center gap-2 rounded-xl border border-white/10 p-2 shadow-2xl backdrop-blur-xl transition-colors focus-within:border-[var(--accent-primary)] sm:flex-nowrap sm:p-1.5 sm:pl-4" onSubmit={handleSeedSubmit}>
               <svg className="w-5 h-5 text-[var(--text-tertiary)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -871,12 +871,8 @@ export default function Home() {
             )}
           </div>
 
-<<<<<<< HEAD
-          {/* RIGHT: Stats & Details */}
-          <div className="pointer-events-auto order-3 flex w-full flex-col gap-3 sm:gap-4 lg:w-80 lg:items-end">
-=======
           {/* RIGHT: Stats & Details / PDF Viewer / 3D Toggle */}
-          <div className={`flex flex-col gap-4 items-end pointer-events-auto transition-all duration-300 ${viewingPdfId ? "w-[40vw] max-w-2xl" : "w-80"}`}>
+          <div className="flex flex-col gap-4 items-end pointer-events-auto w-80">
 
             {/* View Mode Toggle */}
             <div className="glass-card p-1 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-1">
@@ -916,29 +912,12 @@ export default function Home() {
               </div>
             )}
 
->>>>>>> main
             {/* Stats Badge */}
             <div className="glass-card flex w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
               {graphState.nodes.length} nodes · {graphState.links.length} links
             </div>
 
-<<<<<<< HEAD
-            {/* Details Panel */}
-            <aside className="glass-card w-full max-h-[38vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0a]/80 p-5 shadow-2xl backdrop-blur-xl animate-slide-up sm:max-h-[45vh] lg:max-h-[calc(100vh-8rem)]">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h2 className="text-base font-bold text-[var(--text-primary)]">Paper Details</h2>
-              </div>
-
-              {selectedNode ? (
-                <div key={selectedNode.id} className="space-y-4">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="badge badge-secondary font-mono text-[10px] px-2 py-0.5">
-                      {selectedNode.id}
-=======
             {viewingPdfId ? (
               /* ── PDF / HTML Viewer Panel ── */
               <aside className="glass-card rounded-2xl border border-white/10 shadow-2xl w-full h-[calc(100vh-12rem)] backdrop-blur-xl bg-[#0a0a0a]/90 animate-slide-up flex flex-col overflow-hidden">
@@ -950,7 +929,6 @@ export default function Home() {
                     </svg>
                     <span className="text-sm font-bold text-[var(--text-primary)] truncate">
                       {graphState.nodes.find(n => n.id === viewingPdfId)?.label ?? viewingPdfId}
->>>>>>> main
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -1096,24 +1074,6 @@ export default function Home() {
         </div>
 
         {/* BOTTOM LEFT: Controls Help */}
-<<<<<<< HEAD
-        <div className="mt-auto pointer-events-auto self-stretch sm:self-start">
-          <div className="glass-card flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#0a0a0a]/60 px-3 py-2 text-[10px] font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl sm:inline-flex sm:gap-3 sm:rounded-full sm:px-4">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Left click to rotate
-            </div>
-            <div className="hidden h-3 w-px bg-white/10 sm:block"></div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Scroll to zoom
-            </div>
-            <div className="hidden h-3 w-px bg-white/10 sm:block"></div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Click node to fly
-            </div>
-=======
         <div className="mt-auto pointer-events-auto self-start">
           <div className="glass-card inline-flex items-center gap-3 px-4 py-2 rounded-full text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
             {activeRenderer === "3d" ? (
@@ -1156,7 +1116,6 @@ export default function Home() {
                 </div>
               </>
             )}
->>>>>>> main
           </div>
         </div>
 
