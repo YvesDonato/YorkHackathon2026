@@ -50,7 +50,7 @@ export default function LoginPage() {
                 <div className="text-center mb-8 animate-fade-in">
                     <div className="relative mx-auto mb-4 h-[72px] w-[72px] overflow-hidden rounded-2xl shadow-lg">
                         <Image
-                            src="/prismarineLogo.png"
+                            src="/prismarinelogo.png"
                             alt="Prismarine logo"
                             fill
                             sizes="72px"
