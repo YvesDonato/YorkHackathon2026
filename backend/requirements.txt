@@ -9,3 +9,4 @@ argon2-cffi
 pymongo[srv]
 pydantic[email]
 google-genai
+snowflake-connector-python
