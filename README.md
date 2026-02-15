@@ -115,7 +115,7 @@ Turn any paper abstract into a high-quality audio brief using **ElevenLabs**, pe
 
 ## 📦 Deployment
 
-The project is dockerized and deployed via Coolify.
+The project is first dockerized and conatinerize using docker compose for each service such as frontend and backend. After, it then gets deployed via Coolify which is a self hosted vercel like alteunative that is run through a personal high performance server.
 
 ## 📄 License
 
