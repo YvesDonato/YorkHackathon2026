@@ -882,7 +882,7 @@ export default function Home() {
                 type="text"
                 value={seedInput}
                 onChange={(event) => setSeedInput(event.target.value)}
-                placeholder="Search by arXiv URL or ID (e.g., 1706.03762)"
+                placeholder="Search by arXiv or PMC URL or ID (e.g., 1706.03762)"
                 className="bg-transparent border-none text-sm text-white placeholder-white/30 focus:ring-0 min-w-0 flex-1 basis-40 p-0"
               />
               <button
@@ -915,7 +915,7 @@ export default function Home() {
                   setRendererNotice(null);
                   setRendererMode("2d");
                 }}
-                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeRenderer === "2d"
+                className={`px-3 py-1.5 cursor-pointer rounded-md text-[11px] font-semibold transition-colors ${activeRenderer === "2d"
                   ? "bg-[var(--accent-primary)]/20 text-white"
                   : "text-[var(--text-secondary)] hover:bg-white/10"
                   }`}
@@ -929,7 +929,7 @@ export default function Home() {
                     setRendererNotice(null);
                     setRendererMode("3d");
                   }}
-                  className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeRenderer === "3d"
+                  className={`px-3 py-1.5 cursor-pointer rounded-md text-[11px] font-semibold transition-colors ${activeRenderer === "3d"
                     ? "bg-[var(--accent-primary)]/20 text-white"
                     : "text-[var(--text-secondary)] hover:bg-white/10"
                     }`}
