@@ -129,6 +129,12 @@ export default function Home() {
 
   // Interaction State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const selectedNodeIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
+
   const [rootNodeId, setRootNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null); // For 3D
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null); // For 2D
@@ -914,7 +920,7 @@ export default function Home() {
       .attr("stroke", (node: ApiGraphNode) =>
         node.id === selectedNodeId ? "#f472b6" : "none",
       )
-      .attr("stroke-width", 0)
+      .attr("stroke-width", 2)
       .attr("stroke-opacity", 0.9)
       .style("filter", (node: ApiGraphNode) =>
         node.id === selectedNodeId
@@ -1158,7 +1164,7 @@ export default function Home() {
         // Restore original color
         d3.select(this).select("circle.node-circle").attr("fill", (n: any) => {
           if (n.id === expandingNodeId) return "#f59e0b";
-          if (n.id === selectedNodeId) return "#f472b6";
+          if (n.id === selectedNodeIdRef.current) return "#f472b6";
           if (n.id === rootId) return "#d8b4fe";
           return "#a855f7";
         });
@@ -1307,6 +1313,7 @@ export default function Home() {
       .attr("stroke", (node: any) =>
         node.id === selectedNodeId ? "#f472b6" : "none",
       )
+      .attr("stroke-width", 2)
       .style("filter", (node: any) =>
         node.id === selectedNodeId
           ? "drop-shadow(0 0 8px rgba(244, 114, 182, 0.7))"
