@@ -3,8 +3,10 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+    const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(false);
@@ -35,7 +37,7 @@ export default function LoginPage() {
             localStorage.setItem('user', JSON.stringify(data.user));
 
             // Redirect to application page
-            window.location.href = '/app';
+            router.replace('/app');
         } catch (err) {
             setError("Login failed. Please try again.");
         } finally {

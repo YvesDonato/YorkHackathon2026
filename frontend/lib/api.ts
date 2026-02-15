@@ -1,5 +1,7 @@
 const LOCALHOST_HTTP_URL_PATTERN =
   /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(:\d+)?(\/|$)/i;
+const AUTH_REDIRECT_PATH = "/";
+let hasTriggeredUnauthorizedRedirect = false;
 
 const getFastApiBaseUrl = (): string => {
   const configuredBaseUrl = (process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "/api").trim();
@@ -20,6 +22,20 @@ const getFastApiBaseUrl = (): string => {
 };
 
 export const FASTAPI_BASE_URL = getFastApiBaseUrl();
+
+const handleUnauthorizedSession = (): void => {
+  if (typeof window === "undefined") return;
+
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("user");
+
+  if (hasTriggeredUnauthorizedRedirect) return;
+  hasTriggeredUnauthorizedRedirect = true;
+
+  if (window.location.pathname !== AUTH_REDIRECT_PATH) {
+    window.location.replace(AUTH_REDIRECT_PATH);
+  }
+};
 
 export type ApiGraphNode = {
   id: string;
@@ -156,8 +172,13 @@ const requestJson = async <T>(
   if (!response.ok) {
     const detail = await parseErrorDetail(response);
     const statusLabel = `${response.status} ${response.statusText}`.trim();
+    if (response.status === 401) {
+      handleUnauthorizedSession();
+    }
     throw new Error(detail ? `${statusLabel}: ${detail}` : statusLabel);
   }
+
+  hasTriggeredUnauthorizedRedirect = false;
 
   // Handle 204 No Content
   if (response.status === 204) {

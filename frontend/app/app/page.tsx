@@ -13,14 +13,15 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import * as d3 from "d3";
 import {
   createSession,
   listSessions,
   getSession,
+  updateSession,
   deleteSession as deleteSessionApi,
   expandSessionNode,
-  FASTAPI_BASE_URL,
   type ApiGraphLink,
   type ApiGraphNode,
   type Session,
@@ -106,6 +107,7 @@ const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
 export default function Home() {
+  const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -167,6 +169,7 @@ export default function Home() {
     x: number;
     y: number;
   } | null>(null);
+  const hasRedirectedForMissingSessionRef = useRef(false);
 
   // Renderer State
   const [rendererMode, setRendererMode] = useState<RendererMode>("2d");
@@ -187,12 +190,18 @@ export default function Home() {
   useEffect(() => {
     const token = localStorage.getItem("access_token")?.trim();
     if (!token) {
-      window.location.href = "/";
+      setIsAuthenticated(false);
+      setIsAuthChecking(false);
+      if (!hasRedirectedForMissingSessionRef.current) {
+        hasRedirectedForMissingSessionRef.current = true;
+        router.replace("/");
+      }
       return;
     }
+    hasRedirectedForMissingSessionRef.current = false;
     setIsAuthenticated(true);
     setIsAuthChecking(false);
-  }, []);
+  }, [router]);
 
   // Load Sessions
   const loadSessions = useCallback(async () => {
@@ -670,14 +679,7 @@ export default function Home() {
         const seedNode = response.nodes.find(n => n.id === response.seed_id);
         if (seedNode?.label) {
           try {
-            await fetch(`${FASTAPI_BASE_URL}/sessions/${sessionId}`, {
-              method: "PATCH",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("access_token")}`
-              },
-              body: JSON.stringify({ title: seedNode.label })
-            });
+            await updateSession(sessionId, { title: seedNode.label });
             await loadSessions();
           } catch (err) {
             console.error("Failed to update session title:", err);
