@@ -1,8 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import FeatureCards from "./components/FeatureCards";
-import ActionVerbs from "./components/ActionVerbs";
-import RotatingGraph3D from "./components/RotatingGraph3D";
 
 const features = [
   {
@@ -74,7 +72,7 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/login"
-              className="inline-flex min-w-[180px] items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] shadow-lg transition hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(168,85,247,0.45)]"
+              className="inline-flex min-w-[180px] items-center justify-center rounded-lg bg-gradient-to-r from-[#a855f7] to-[#ec4899] px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.02] hover:shadow-[0_0_24px_rgba(168,85,247,0.45)]"
             >
               Get Started
             </Link>
@@ -84,26 +82,6 @@ export default function HomePage() {
             >
               Create Account
             </Link>
-          </div>
-        </section>
-
-        <section className="mt-20 relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-purple-500/5 via-transparent to-transparent pointer-events-none" />
-          <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-stretch">
-            <div className="relative p-6 lg:p-8 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-sm">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500/50 to-pink-500/50 rounded-t-2xl" />
-              <ActionVerbs />
-            </div>
-            
-            <div className="relative h-[500px] lg:h-auto min-h-[450px] rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-sm overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500/50 to-purple-500/50 rounded-t-2xl" />
-              <div className="absolute top-4 right-4 z-20">
-                <span className="text-xs font-medium text-purple-300/70 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
-                  Live 3D Visualization
-                </span>
-              </div>
-              <RotatingGraph3D />
-            </div>
           </div>
         </section>
 
