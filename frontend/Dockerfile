@@ -3,7 +3,10 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# Always include dev dependencies in build stages.
+# Some deployment environments set NODE_ENV=production globally,
+# which can otherwise omit TypeScript/Next build-time packages.
+RUN npm ci --include=dev
 
 FROM node:20-alpine AS builder
 
@@ -16,7 +19,8 @@ ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# Surface full Next.js output in Docker logs when build fails.
+RUN npm run build > /tmp/next-build.log 2>&1 || (cat /tmp/next-build.log && exit 1)
 
 FROM node:20-alpine AS runner
 

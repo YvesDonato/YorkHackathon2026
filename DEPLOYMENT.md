@@ -123,3 +123,50 @@ Common log patterns:
 | `DB_CONNECT_ERROR: ...` | Atlas not reachable/network issue | Verify URI hostname and Atlas IP/network rules |
 | `DB_AUTH_ERROR: ...` | Mongo auth/credentials issue | Verify username/password/auth source in URI |
 | `DB_INDEX_ERROR: ...` | Mongo user lacks index permissions | Grant index/createIndex permissions and redeploy |
+
+## 6. Cloudflare Beacon Errors (Prod)
+
+If browser console shows errors for:
+
+- `https://static.cloudflareinsights.com/beacon.min.js/...`
+- `CORS request did not succeed`
+- `integrity` mismatch for beacon script
+
+the script is being injected by Cloudflare at the edge, not by this repository.
+
+Fix in Cloudflare dashboard:
+
+1. Disable **Web Analytics** for this site.
+2. Disable **Browser Insights** for this site (if enabled).
+3. If a Cloudflare Worker is attached to this domain, remove any manual beacon/script injection.
+4. Purge Cloudflare cache (at least HTML documents).
+5. Redeploy frontend and hard-refresh browser.
+
+Notes:
+
+- Frontend CSP in `frontend/next.config.ts` only allows first-party scripts. If Cloudflare still injects beacon, browser will block it.
+- This beacon issue is separate from backend API CORS for `/api/*`.
+
+## 7. Frontend Build Fails In Docker (`RUN npm run build`)
+
+If Coolify only shows a generic failure at `frontend/Dockerfile` build step:
+
+1. Confirm Coolify is deploying the same git commit you validated locally.
+   A commit/source mismatch can pass locally and fail remotely.
+2. Reproduce with a clean install from repo root:
+
+```bash
+docker compose --env-file .env build frontend
+```
+
+3. If you need an npm-only reproduction:
+
+```bash
+cd frontend
+npm ci --include=dev
+npm run build
+```
+
+This repository now forces dev dependencies during image build (`npm ci --include=dev`)
+and prints full Next.js build output when `npm run build` fails, so Coolify logs include
+the actual compiler/runtime error instead of only the Dockerfile line number.
