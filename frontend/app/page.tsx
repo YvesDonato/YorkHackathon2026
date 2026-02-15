@@ -1,9 +1,5 @@
 import Link from "next/link";
-<<<<<<< HEAD
-import Image from "next/image";
 import FeatureCards from "./components/FeatureCards";
-=======
->>>>>>> parent of bf212d8... Logo Swap
 
 const features = [
   {

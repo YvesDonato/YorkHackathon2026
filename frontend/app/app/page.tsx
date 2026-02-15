@@ -8,12 +8,8 @@ import {
   useState,
   type FormEvent,
 } from "react";
-<<<<<<< HEAD
 import Image from "next/image";
 import dynamic from "next/dynamic";
-=======
-import Script from "next/script";
->>>>>>> parent of bf212d8... Logo Swap
 import {
   createSession,
   listSessions,
