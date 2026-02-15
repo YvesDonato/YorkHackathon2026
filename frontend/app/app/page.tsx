@@ -58,6 +58,7 @@ export default function Home() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [viewport, setViewport] = useState({ width: 900, height: 560 });
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [rootNodeId, setRootNodeId] = useState<string | null>(null);
 
   const selectedNode = useMemo(
     () => graphState.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -108,6 +109,7 @@ export default function Home() {
       const response = await getSession(sessionId);
       setGraphState({ nodes: response.nodes, links: response.links });
       setSelectedNodeId(response.seed_id);
+      setRootNodeId(response.seed_id);
       setCurrentSessionId(sessionId);
     } catch (error) {
       setGraphError(formatError(error));
@@ -134,7 +136,7 @@ export default function Home() {
     setGraphError(null);
 
     try {
-      const session = await createSession({ seed_paper_link: normalizedSeed, mode: "grounding" });
+      const session = await createSession({ seed_paper_link: normalizedSeed, mode: "references" });
       await loadSessions(); // Refresh session list
       await loadSessionGraph(session.id); // Load the new session's graph
     } catch (error) {
@@ -251,6 +253,24 @@ export default function Home() {
     // Create a container group for zoom/pan
     const zoomContainer = svg.append("g").attr("class", "zoom-container");
 
+    // Draw concentric radial guide rings
+    const guideCx = viewport.width / 2;
+    const guideCy = viewport.height / 2;
+    const guideMaxR = Math.min(viewport.width, viewport.height) * 0.4;
+    const ringCount = 4;
+    for (let i = 1; i <= ringCount; i++) {
+      const r = (guideMaxR / ringCount) * i;
+      zoomContainer
+        .append("circle")
+        .attr("cx", guideCx)
+        .attr("cy", guideCy)
+        .attr("r", r)
+        .attr("fill", "none")
+        .attr("stroke", "rgba(168, 85, 247, 0.08)")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "4,6");
+    }
+
     // Add zoom behavior
     const zoom = d3.zoom()
       .scaleExtent([0.1, 4])
@@ -344,6 +364,50 @@ export default function Home() {
         });
       });
 
+    // ── Radial layout: root at center, distance = inverse similarity ──
+    const cx = viewport.width / 2;
+    const cy = viewport.height / 2;
+    const maxRadius = Math.min(viewport.width, viewport.height) * 0.4;
+
+    // Build a map: nodeId → best (max) similarity to the root
+    const rootId = rootNodeId ?? graphState.nodes.find((n) => n.is_root)?.id ?? simulationNodes[0]?.id;
+    const bestSimilarity = new Map<string, number>();
+    for (const link of graphState.links) {
+      const s = toNodeId(link.source);
+      const t = toNodeId(link.target);
+      const sim = (link as any).similarity ?? 0;
+      if (s === rootId) bestSimilarity.set(t, Math.max(bestSimilarity.get(t) ?? 0, sim));
+      if (t === rootId) bestSimilarity.set(s, Math.max(bestSimilarity.get(s) ?? 0, sim));
+    }
+
+    // For nodes not directly connected to root, walk one hop
+    for (const link of graphState.links) {
+      const s = toNodeId(link.source);
+      const t = toNodeId(link.target);
+      const sim = (link as any).similarity ?? 0;
+      if (bestSimilarity.has(s) && !bestSimilarity.has(t) && t !== rootId) {
+        bestSimilarity.set(t, bestSimilarity.get(s)! * sim);
+      }
+      if (bestSimilarity.has(t) && !bestSimilarity.has(s) && s !== rootId) {
+        bestSimilarity.set(s, bestSimilarity.get(t)! * sim);
+      }
+    }
+
+    // Pin root node at center
+    const rootSimNode = simulationNodes.find((n) => n.id === rootId);
+    if (rootSimNode) {
+      (rootSimNode as any).fx = cx;
+      (rootSimNode as any).fy = cy;
+    }
+
+    // Compute target radius for each node: high similarity → small radius
+    const nodeRadius = (node: any): number => {
+      if (node.id === rootId) return 0;
+      const sim = bestSimilarity.get(node.id) ?? 0;
+      // sim 1.0 → 15% of maxRadius, sim 0.0 → 100% of maxRadius
+      return maxRadius * (1 - sim * 0.85);
+    };
+
     const simulation = d3
       .forceSimulation(simulationNodes)
       .force(
@@ -351,11 +415,21 @@ export default function Home() {
         d3
           .forceLink(simulationLinks)
           .id((node: ApiGraphNode) => node.id)
-          .distance(140)
-          .strength(0.6),
+          .distance((link: any) => {
+            const sim = link.similarity ?? 0;
+            return maxRadius * (1 - sim * 0.85);
+          })
+          .strength(0.3),
       )
-      .force("charge", d3.forceManyBody().strength(-750))
-      .force("center", d3.forceCenter(viewport.width / 2, viewport.height / 2))
+      .force("charge", d3.forceManyBody().strength(-400))
+      .force(
+        "radial",
+        d3.forceRadial(
+          (node: any) => nodeRadius(node),
+          cx,
+          cy,
+        ).strength((node: any) => (node.id === rootId ? 1 : 0.8)),
+      )
       .force("collision", d3.forceCollide().radius(42));
 
     // Create tooltip
@@ -404,17 +478,25 @@ export default function Home() {
         if (!event.active) {
           simulation.alphaTarget(0);
         }
-        node.fx = null;
-        node.fy = null;
+        // Keep the root node pinned at center
+        if (node.id === rootId) {
+          node.fx = cx;
+          node.fy = cy;
+        } else {
+          node.fx = null;
+          node.fy = null;
+        }
         handleNodeMouseUp();
       });
 
     nodeSelection.call(dragBehavior)
       .on("mouseenter", function (event: MouseEvent, node: ApiGraphNode) {
         if (focusedNodeId) return; // Hide tooltip if focused
+        const sim = bestSimilarity.get(node.id);
+        const simText = sim != null ? `<div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Similarity: ${(sim * 100).toFixed(0)}%</div>` : "";
         tooltip
           .style("visibility", "visible")
-          .html(`<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>`);
+          .html(`<div style="font-weight: 600; color: #c084fc; margin-bottom: 4px;">${node.id}</div><div>${node.label}</div>${simText}`);
       })
       .on("mousemove", function (event: MouseEvent) {
         if (focusedNodeId) return;
@@ -454,6 +536,7 @@ export default function Home() {
     hasOutgoingLinks,
     isAuthenticated,
     isD3Loaded,
+    rootNodeId,
     viewport.height,
     viewport.width,
   ]);
@@ -475,6 +558,14 @@ export default function Home() {
 
     const svg = d3.select(svgRef.current);
     const isFocusActive = !!focusedNodeId;
+
+    // Helper to check if a link is connected to the selected or focused node
+    const isLinkConnectedToSelected = (link: ApiGraphLink) => {
+      if (!selectedNodeId) return false;
+      const s = toNodeId(link.source);
+      const t = toNodeId(link.target);
+      return s === selectedNodeId || t === selectedNodeId;
+    };
 
     // Helper to check if a node is connected to the focused node
     const isConnected = (nodeId: string) => {
@@ -523,21 +614,37 @@ export default function Home() {
           : "none";
       });
 
-    // Update links opacity
+    // Update links: highlight edges connected to selected or focused node
     svg.selectAll("g.zoom-container line")
       .transition()
       .duration(300)
       .style("opacity", (link: ApiGraphLink) => {
-        if (!isFocusActive) return 0.6;
-        const s = toNodeId(link.source);
-        const t = toNodeId(link.target);
-        return (s === focusedNodeId || t === focusedNodeId) ? 1 : 0.1;
+        if (isFocusActive) {
+          const s = toNodeId(link.source);
+          const t = toNodeId(link.target);
+          return (s === focusedNodeId || t === focusedNodeId) ? 1 : 0.1;
+        }
+        if (selectedNodeId && isLinkConnectedToSelected(link)) return 1;
+        if (selectedNodeId) return 0.15;
+        return 0.6;
       })
       .attr("stroke", (link: ApiGraphLink) => {
-        if (!isFocusActive) return "#404040";
-        const s = toNodeId(link.source);
-        const t = toNodeId(link.target);
-        return (s === focusedNodeId || t === focusedNodeId) ? "#a855f7" : "#404040";
+        if (isFocusActive) {
+          const s = toNodeId(link.source);
+          const t = toNodeId(link.target);
+          return (s === focusedNodeId || t === focusedNodeId) ? "#a855f7" : "#404040";
+        }
+        if (selectedNodeId && isLinkConnectedToSelected(link)) return "#a855f7";
+        return "#404040";
+      })
+      .attr("stroke-width", (link: ApiGraphLink) => {
+        if (isFocusActive) {
+          const s = toNodeId(link.source);
+          const t = toNodeId(link.target);
+          return (s === focusedNodeId || t === focusedNodeId) ? 3 : 1;
+        }
+        if (selectedNodeId && isLinkConnectedToSelected(link)) return 3;
+        return 2;
       });
 
     // Hide tooltip if focus is active

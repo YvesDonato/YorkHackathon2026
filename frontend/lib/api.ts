@@ -35,6 +35,7 @@ export type ApiGraphNode = {
 export type ApiGraphLink = {
   source: string;
   target: string;
+  similarity?: number;
 };
 
 export type ApiGraphResponse = {
