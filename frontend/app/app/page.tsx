@@ -97,6 +97,7 @@ export default function Home() {
   // Renderer State
   const [rendererMode, setRendererMode] = useState<RendererMode>("2d");
   const [rendererNotice, setRendererNotice] = useState<string | null>(null);
+  const [rendererInstanceKey, setRendererInstanceKey] = useState(0);
 
   const selectedNode = useMemo(
     () => graphState.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -190,6 +191,12 @@ export default function Home() {
 
   const activeRenderer: RendererMode =
     rendererMode === "3d" && ENABLE_3D_EXPERIMENTAL ? "3d" : "2d";
+
+  useEffect(() => {
+    setRendererInstanceKey((previous) => previous + 1);
+    setHoveredNodeId(null);
+    setFocusedNodeId(null);
+  }, [activeRenderer]);
 
   const handle3DRuntimeError = useCallback((error: Error) => {
     console.error("3D renderer failed, falling back to 2D:", error);
@@ -795,6 +802,7 @@ export default function Home() {
           viewport.width > 0 && (
             <GraphErrorBoundary onError={handle3DRuntimeError}>
               <GraphRenderer3D
+                key={`3d-${rendererInstanceKey}`}
                 width={viewport.width}
                 height={viewport.height}
                 graphState={graphState}

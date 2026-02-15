@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import SpriteText from "three-spritetext";
 import type { ApiGraphLink, ApiGraphNode } from "@/lib/api";
@@ -47,16 +47,23 @@ export default function GraphRenderer3D({
     onRuntimeError,
 }: GraphRenderer3DProps) {
     const fgRef = useRef<any>(null);
+    const safeGraphData = useMemo(
+        () => ({
+            nodes: graphState.nodes.map((node) => ({ ...node })),
+            links: graphState.links.map((link) => ({ ...link })),
+        }),
+        [graphState.nodes, graphState.links],
+    );
 
     useEffect(() => {
-        if (!fgRef.current) return;
-
-        fgRef.current.d3Force("link").distance((link: any) => {
-            const similarity = link.similarity ?? 0.0;
-            return 180 - similarity * 150;
-        });
-        fgRef.current.d3ReheatSimulation();
-    }, [graphState]);
+        return () => {
+            const fg = fgRef.current;
+            if (!fg) return;
+            fg.pauseAnimation?.();
+            fg._destructor?.();
+            fgRef.current = null;
+        };
+    }, []);
 
     return (
         <GraphErrorBoundary onError={(error) => onRuntimeError?.(error)}>
@@ -64,9 +71,10 @@ export default function GraphRenderer3D({
                 ref={fgRef}
                 width={width}
                 height={height}
-                graphData={graphState}
+                graphData={safeGraphData}
                 backgroundColor="rgba(0,0,0,0)"
                 nodeLabel="label"
+                enableNodeDrag={false}
                 nodeColor={(node: any) => {
                     const isRoot = node.id === rootNodeId;
                     const isHighlighted = node.id === hoveredNodeId || node.id === selectedNodeId;
@@ -130,9 +138,17 @@ export default function GraphRenderer3D({
                 onNodeClick={(node: any) => {
                     onSelectNodeId(node.id);
                     if (!fgRef.current) return;
+                    if (
+                        typeof node?.x !== "number" ||
+                        typeof node?.y !== "number" ||
+                        typeof node?.z !== "number"
+                    ) {
+                        return;
+                    }
 
                     const distance = 120;
-                    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+                    const nodeDistance = Math.hypot(node.x, node.y, node.z);
+                    const distRatio = nodeDistance > 0 ? 1 + distance / nodeDistance : 1;
                     fgRef.current.cameraPosition(
                         { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
                         node,
