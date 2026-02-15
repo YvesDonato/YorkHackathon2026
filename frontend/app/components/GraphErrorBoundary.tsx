@@ -4,6 +4,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 type GraphErrorBoundaryProps = {
   children: ReactNode;
+  onError?: (error: Error) => void;
 };
 
 type GraphErrorBoundaryState = {
@@ -24,6 +25,7 @@ export default class GraphErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error("Graph runtime error:", error, info);
+    this.props.onError?.(error);
   }
 
   private handleRetry = (): void => {
