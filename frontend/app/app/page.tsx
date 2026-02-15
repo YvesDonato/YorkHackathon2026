@@ -8,9 +8,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import Image from "next/image";
 import dynamic from "next/dynamic";
-import SpriteText from "three-spritetext";
 import {
   createSession,
   listSessions,
@@ -20,12 +18,8 @@ import {
   type ApiGraphNode,
   type Session,
 } from "@/lib/api";
+import GraphRendererRadial from "@/app/components/GraphRendererRadial";
 import GraphErrorBoundary from "@/app/components/GraphErrorBoundary";
-
-const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
-  ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full text-white/50">Loading 3D Engine...</div>
-});
 
 type GraphState = {
   nodes: ApiGraphNode[];
@@ -33,32 +27,54 @@ type GraphState = {
 };
 
 const DEFAULT_SEED_LINK = "1706.03762";
+const RENDERER_MODE_STORAGE_KEY = "prismarine_renderer_mode";
+const ENABLE_3D_EXPERIMENTAL =
+  process.env.NEXT_PUBLIC_ENABLE_3D_EXPERIMENTAL === "true";
+
+type RendererMode = "2d" | "3d";
+
+const GraphRenderer3D = dynamic(() => import("@/app/components/GraphRenderer3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-white/50">
+      Loading 3D Engine...
+    </div>
+  ),
+});
 
 const createEmptyGraphState = (): GraphState => ({ nodes: [], links: [] });
-
-const toNodeId = (endpoint: string | { id: string }): string =>
-  typeof endpoint === "string" ? endpoint : endpoint.id;
 
 const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : "Unexpected error";
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const fgRef = useRef<any>(null);
 
+  // Auth & General State
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [seedInput, setSeedInput] = useState(DEFAULT_SEED_LINK);
-  const [graphState, setGraphState] = useState<GraphState>(createEmptyGraphState);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [rootNodeId, setRootNodeId] = useState<string | null>(null);
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [isLoadingGraph, setIsLoadingGraph] = useState(false);
-  const [graphError, setGraphError] = useState<string | null>(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+
+  // Data State
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [seedInput, setSeedInput] = useState(DEFAULT_SEED_LINK);
+
+  // Graph State
+  const [graphState, setGraphState] = useState<GraphState>(createEmptyGraphState);
+  const [isLoadingGraph, setIsLoadingGraph] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
+
+  // Interaction State
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [rootNodeId, setRootNodeId] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null); // For 3D
+  const [viewingPdfId, setViewingPdfId] = useState<string | null>(null); // For PDF viewer
+
+  // Renderer State
+  const [rendererMode, setRendererMode] = useState<RendererMode>("2d");
+  const [rendererNotice, setRendererNotice] = useState<string | null>(null);
 
   const selectedNode = useMemo(
     () => graphState.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -70,17 +86,18 @@ export default function Home() {
     [graphState.links],
   );
 
+  // Authentication Check
   useEffect(() => {
     const token = localStorage.getItem("access_token")?.trim();
     if (!token) {
       window.location.href = "/login";
       return;
     }
-
     setIsAuthenticated(true);
     setIsAuthChecking(false);
   }, []);
 
+  // Load Sessions
   const loadSessions = useCallback(async () => {
     try {
       const sessionList = await listSessions();
@@ -97,6 +114,60 @@ export default function Home() {
     void loadSessions();
   }, [isAuthenticated, loadSessions]);
 
+  // Viewport Resize
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const element = containerRef.current;
+    if (!element) return;
+
+    const updateViewport = () => {
+      const rect = element.getBoundingClientRect();
+      setViewport({
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isAuthenticated]);
+
+  // 3D Mode Logic
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let nextMode: RendererMode = "2d";
+    if (ENABLE_3D_EXPERIMENTAL) {
+      const queryMode = new URLSearchParams(window.location.search).get("renderer");
+      const savedMode = localStorage.getItem(RENDERER_MODE_STORAGE_KEY);
+      if (queryMode === "3d" || savedMode === "3d") {
+        nextMode = "3d";
+      }
+    }
+    setRendererMode(nextMode);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (rendererMode === "3d" && !ENABLE_3D_EXPERIMENTAL) {
+      setRendererMode("2d");
+      return;
+    }
+    localStorage.setItem(RENDERER_MODE_STORAGE_KEY, rendererMode);
+  }, [rendererMode]);
+
+  const activeRenderer: RendererMode =
+    rendererMode === "3d" && ENABLE_3D_EXPERIMENTAL ? "3d" : "2d";
+
+  const handle3DRuntimeError = useCallback((error: Error) => {
+    console.error("3D renderer failed, falling back to 2D:", error);
+    setRendererNotice("3D renderer failed. Switched to 2D renderer.");
+    setRendererMode("2d");
+  }, []);
+
+  // Graph Operations
   const loadSessionGraph = useCallback(async (sessionId: string) => {
     setIsLoadingGraph(true);
     setGraphError(null);
@@ -116,28 +187,8 @@ export default function Home() {
     }
   }, []);
 
-  // Update force layout distance when graph changes
-  useEffect(() => {
-    if (fgRef.current) {
-      // Configure d3 force link distance
-      fgRef.current.d3Force('link').distance((link: any) => {
-        // High similarity (near 1.0) -> Short distance (e.g. 30)
-        // Low similarity (near 0.0) -> Long distance (e.g. 180)
-        const sim = link.similarity ?? 0.0;
-        return 180 - (sim * 150);
-      });
-
-      // Increase charge strength to spread out unconnected components
-      // fgRef.current.d3Force('charge').strength(-200);
-
-      // Re-heat simulation
-      fgRef.current.d3ReheatSimulation();
-    }
-  }, [graphState]);
-
   const createNewSession = useCallback(async (seedLink: string) => {
     const normalizedSeed = seedLink.trim();
-
     if (!normalizedSeed) {
       setGraphError("Enter an arXiv URL or ID.");
       setGraphState(createEmptyGraphState());
@@ -175,24 +226,10 @@ export default function Home() {
     }
   }, [currentSessionId, loadSessions]);
 
-  const handleNodeClick = useCallback(
-    (node: any) => {
-      setSelectedNodeId(node.id);
-
-      if (fgRef.current) {
-        // Aim at node from distance
-        const distance = 120;
-        const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-
-        fgRef.current.cameraPosition(
-          { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new position
-          node, // lookAt ({ x, y, z })
-          2000  // ms transition duration
-        );
-      }
-    },
-    [],
-  );
+  const handleNodeSelect = useCallback((nodeId: string | null) => {
+    setSelectedNodeId(nodeId);
+    setViewingPdfId(null); // Reset PDF view when selecting a node
+  }, []);
 
   const handleSeedSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -201,25 +238,6 @@ export default function Home() {
     },
     [createNewSession, seedInput],
   );
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const element = containerRef.current;
-    if (!element) return;
-
-    const updateViewport = () => {
-      const rect = element.getBoundingClientRect();
-      setViewport({
-        width: rect.width,
-        height: rect.height,
-      });
-    };
-
-    updateViewport();
-    const observer = new ResizeObserver(updateViewport);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [isAuthenticated]);
 
   if (isAuthChecking) {
     return (
@@ -239,53 +257,32 @@ export default function Home() {
         className="fixed inset-0 z-0 bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a]"
       >
         {viewport.width > 0 && (
-          <GraphErrorBoundary>
-            <ForceGraph3D
-              ref={fgRef}
+          activeRenderer === "3d" ? (
+            <GraphErrorBoundary onError={handle3DRuntimeError}>
+              <GraphRenderer3D
+                width={viewport.width}
+                height={viewport.height}
+                graphState={graphState}
+                rootNodeId={rootNodeId}
+                selectedNodeId={selectedNodeId}
+                hoveredNodeId={hoveredNodeId}
+                onHoverNodeIdChange={setHoveredNodeId}
+                onSelectNodeId={handleNodeSelect}
+                onRuntimeError={handle3DRuntimeError}
+              />
+            </GraphErrorBoundary>
+          ) : (
+            <GraphRendererRadial
               width={viewport.width}
               height={viewport.height}
-              graphData={graphState}
-              backgroundColor="rgba(0,0,0,0)"
-              nodeLabel="label"
-              nodeColor={(node: any) => {
-                const isRoot = node.id === rootNodeId;
-                const isHighlighted = node.id === hoveredNodeId || node.id === selectedNodeId;
-
-                if (isRoot) {
-                  return isHighlighted ? "#f9a8d4" : "#ec4899"; // Pink-300 : Pink-500
-                }
-                return isHighlighted ? "#d8b4fe" : "#a855f7"; // Purple-300 : Purple-500
-              }}
-              onNodeHover={(node: any) => setHoveredNodeId(node ? node.id : null)}
-              nodeRelSize={6}
-              nodeThreeObjectExtend={true}
-              nodeThreeObject={(node: any) => {
-                const sprite = new SpriteText(node.label);
-                sprite.material.depthWrite = false; // Prevent occlusion issues
-                sprite.color = node.id === selectedNodeId ? "#fff" : "rgba(255, 255, 255, 0.8)";
-                sprite.textHeight = node.id === selectedNodeId ? 6 : 4;
-                sprite.center.y = 0; // Center vertically on node
-                sprite.position.y = 12; // Offset above the node
-                return sprite;
-              }}
-              linkColor={(link: any) => {
-                const s = toNodeId(link.source);
-                const t = toNodeId(link.target);
-                if (s === selectedNodeId || t === selectedNodeId) return "rgba(168, 85, 247, 0.8)";
-                return "rgba(255,255,255,0.2)";
-              }}
-              linkWidth={(link: any) => {
-                const s = toNodeId(link.source);
-                const t = toNodeId(link.target);
-                return s === selectedNodeId || t === selectedNodeId ? 2 : 0.5;
-              }}
-              linkOpacity={0.3}
-              linkLabel={(link: any) => `Similarity: ${(link.similarity * 100).toFixed(0)}%`}
-              onNodeClick={handleNodeClick}
-              onBackgroundClick={() => setSelectedNodeId(null)}
-              controlType="orbit"
+              graphState={graphState}
+              rootNodeId={rootNodeId}
+              selectedNodeId={selectedNodeId}
+              hoveredNodeId={hoveredNodeId}
+              onHoverNodeIdChange={setHoveredNodeId}
+              onSelectNodeId={handleNodeSelect}
             />
-          </GraphErrorBoundary>
+          )
         )}
 
         {isLoadingGraph && (
@@ -427,85 +424,177 @@ export default function Home() {
             )}
           </div>
 
-          {/* RIGHT: Stats & Details */}
-          <div className="flex flex-col gap-4 items-end pointer-events-auto w-80">
+          {/* RIGHT: Stats & Details / PDF Viewer / 3D Toggle */}
+          <div className={`flex flex-col gap-4 items-end pointer-events-auto transition-all duration-300 ${viewingPdfId ? "w-[40vw] max-w-2xl" : "w-80"}`}>
+
+            {/* View Mode Toggle */}
+            <div className="glass-card p-1 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setRendererNotice(null);
+                  setRendererMode("2d");
+                }}
+                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeRenderer === "2d"
+                  ? "bg-[var(--accent-primary)]/20 text-white"
+                  : "text-[var(--text-secondary)] hover:bg-white/10"
+                  }`}
+              >
+                2D
+              </button>
+              {ENABLE_3D_EXPERIMENTAL && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRendererNotice(null);
+                    setRendererMode("3d");
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeRenderer === "3d"
+                    ? "bg-[var(--accent-primary)]/20 text-white"
+                    : "text-[var(--text-secondary)] hover:bg-white/10"
+                    }`}
+                >
+                  3D (Experimental)
+                </button>
+              )}
+            </div>
+
+            {rendererNotice && (
+              <div className="glass-card px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 text-[11px] font-medium">
+                {rendererNotice}
+              </div>
+            )}
+
             {/* Stats Badge */}
             <div className="glass-card px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
               {graphState.nodes.length} nodes · {graphState.links.length} links
             </div>
 
-            {/* Details Panel */}
-            <aside className="glass-card p-5 rounded-2xl border border-white/10 shadow-2xl w-full max-h-[calc(100vh-8rem)] overflow-y-auto backdrop-blur-xl bg-[#0a0a0a]/80 animate-slide-up">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h2 className="text-base font-bold text-[var(--text-primary)]">Paper Details</h2>
-              </div>
-
-              {selectedNode ? (
-                <div key={selectedNode.id} className="space-y-4">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="badge badge-secondary font-mono text-[10px] px-2 py-0.5">
-                      {selectedNode.id}
+            {viewingPdfId ? (
+              /* ── PDF / HTML Viewer Panel ── */
+              <aside className="glass-card rounded-2xl border border-white/10 shadow-2xl w-full h-[calc(100vh-12rem)] backdrop-blur-xl bg-[#0a0a0a]/90 animate-slide-up flex flex-col overflow-hidden">
+                {/* Viewer Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <svg className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    <span className="text-sm font-bold text-[var(--text-primary)] truncate">
+                      {graphState.nodes.find(n => n.id === viewingPdfId)?.label ?? viewingPdfId}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <a
-                      href={`https://arxiv.org/abs/${selectedNode.id}`}
+                      href={`https://arxiv.org/pdf/${viewingPdfId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] font-medium text-[var(--accent-primary)] hover:text-[#f472b6] flex items-center gap-1 transition-colors"
+                      className="text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--accent-primary)] flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
                     >
-                      View on arXiv
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
+                      Open PDF
                     </a>
+                    <button
+                      onClick={() => setViewingPdfId(null)}
+                      className="p-1.5 hover:bg-white/10 rounded-lg text-[var(--text-secondary)] hover:text-white transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
+                </div>
+                {/* Iframe: arXiv PDF viewer */}
+                <iframe
+                  src={`/pdf-proxy/${viewingPdfId}`}
+                  className="flex-1 w-full bg-white rounded-b-2xl"
+                  title={`Paper ${viewingPdfId}`}
+                />
+              </aside>
+            ) : (
+              <aside className="glass-card p-5 rounded-2xl border border-white/10 shadow-2xl w-full max-h-[calc(100vh-8rem)] overflow-y-auto backdrop-blur-xl bg-[#0a0a0a]/80 animate-slide-up">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="w-5 h-5 text-[var(--accent-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <h2 className="text-base font-bold text-[var(--text-primary)]">Paper Details</h2>
+                </div>
 
-                  <div>
-                    <h3 className="text-sm font-bold text-[var(--text-primary)] leading-snug mb-2">
-                      {selectedNode.label}
-                    </h3>
-
-                    <div className="text-xs text-[var(--text-secondary)] leading-relaxed max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                      {selectedNode.content ? (
-                        <p>{selectedNode.content}</p>
-                      ) : (
-                        <p className="italic text-[var(--text-tertiary)]">
-                          No abstract available.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-[var(--border-secondary)] space-y-2">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-[var(--text-tertiary)]">Connections</span>
-                      <span className="font-medium text-[var(--text-secondary)]">
-                        {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "Leaf Node"}
+                {selectedNode ? (
+                  <div key={selectedNode.id} className="space-y-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge badge-secondary font-mono text-[10px] px-2 py-0.5">
+                        {selectedNode.id}
                       </span>
+                      <a
+                        href={`https://arxiv.org/abs/${selectedNode.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-medium text-[var(--accent-primary)] hover:text-[#f472b6] flex items-center gap-1 transition-colors"
+                      >
+                        View on arXiv
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--text-primary)] leading-snug mb-2">
+                        {selectedNode.label}
+                      </h3>
+
+                      <div className="text-xs text-[var(--text-secondary)] leading-relaxed max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                        {selectedNode.content ? (
+                          <p>{selectedNode.content}</p>
+                        ) : (
+                          <p className="italic text-[var(--text-tertiary)]">
+                            No abstract available.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-[var(--border-secondary)] space-y-2">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-[var(--text-tertiary)]">Connections</span>
+                        <span className="font-medium text-[var(--text-secondary)]">
+                          {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "Leaf Node"}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => setViewingPdfId(selectedNode.id)}
+                        className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent-primary)]/20 hover:bg-[var(--accent-primary)]/30 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] text-xs font-semibold transition-all hover:scale-[1.02]"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                        View Paper
+                      </button>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center">
-                    <svg className="w-6 h-6 text-[var(--text-tertiary)] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                    </svg>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center">
+                      <svg className="w-6 h-6 text-[var(--text-tertiary)] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-[var(--text-secondary)]">
+                        No paper selected
+                      </p>
+                      <p className="text-[10px] text-[var(--text-tertiary)] mt-1">
+                        Click a node to view details
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-[var(--text-secondary)]">
-                      No paper selected
-                    </p>
-                    <p className="text-[10px] text-[var(--text-tertiary)] mt-1">
-                      Click a node to view details
-                    </p>
-                  </div>
-                </div>
-              )}
-            </aside>
+                )}
+              </aside>
+            )}
           </div>
 
         </div>
@@ -513,20 +602,36 @@ export default function Home() {
         {/* BOTTOM LEFT: Controls Help */}
         <div className="mt-auto pointer-events-auto self-start">
           <div className="glass-card inline-flex items-center gap-3 px-4 py-2 rounded-full text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Left click to rotate
-            </div>
-            <div className="w-px h-3 bg-white/10"></div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Scroll to zoom
-            </div>
-            <div className="w-px h-3 bg-white/10"></div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Click node to fly
-            </div>
+            {activeRenderer === "3d" ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Left click to rotate
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Scroll to zoom
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Click node to fly
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Hover nodes to inspect graph
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Click node to open details
+                </div>
+              </>
+            )}
           </div>
         </div>
 
