@@ -1315,7 +1315,7 @@ export default function Home() {
           setRendererNotice(null);
           setRendererMode("2d");
         }}
-        className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+        className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${
           activeRenderer === "2d"
             ? "bg-[var(--accent-primary)]/20 text-white"
             : "text-[var(--text-secondary)] hover:bg-white/10"
@@ -1330,7 +1330,7 @@ export default function Home() {
             setRendererNotice(null);
             setRendererMode("3d");
           }}
-          className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+          className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${
             activeRenderer === "3d"
               ? "bg-[var(--accent-primary)]/20 text-white"
               : "text-[var(--text-secondary)] hover:bg-white/10"
@@ -1433,11 +1433,11 @@ export default function Home() {
       {/* UI LAYER (Floating Overlays) */}
       <div className="fixed inset-0 z-10 pointer-events-none flex flex-col gap-3 overflow-y-auto overscroll-contain p-3 pb-6 sm:gap-4 sm:p-6 lg:overflow-visible lg:p-8">
         {/* TOP ROW */}
-        <div className="flex flex-wrap items-start justify-between gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-6 lg:grid lg:grid-cols-[max-content_minmax(0,1fr)_20rem] lg:items-start lg:justify-normal">
           {/* LEFT: Branding & Sessions */}
-          <div className="pointer-events-auto order-2 flex w-full max-w-none flex-col gap-4 lg:order-none lg:w-auto lg:max-w-sm">
+          <div className="pointer-events-auto order-2 flex w-full max-w-none flex-col gap-4 lg:order-none lg:col-start-1 lg:w-fit lg:max-w-none">
             {/* Logo */}
-            <a href="/" className="hidden lg:flex glass-card items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
+            <a href="/" className="hidden lg:flex lg:h-14 lg:w-72 glass-card items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
               <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-gradient-to-br from-[#a855f7]/20 to-[#ec4899]/20 shadow-lg ring-1 ring-white/20">
                 <Image
                   src="/prismarinelogo.png"
@@ -1555,9 +1555,9 @@ export default function Home() {
           </div>
 
           {/* CENTER: Search Bar */}
-          <div className="pointer-events-auto order-1 w-full max-w-none lg:order-none lg:flex-1 lg:max-w-xl">
+          <div className="pointer-events-auto order-1 w-full max-w-none lg:order-none lg:col-start-2 lg:min-w-0 lg:max-w-none">
             <form
-              className="glass-card flex flex-wrap items-center gap-2 rounded-xl border border-white/10 p-2 shadow-2xl backdrop-blur-xl transition-colors focus-within:border-[var(--accent-primary)] sm:flex-nowrap sm:p-1.5 sm:pl-4"
+              className="glass-card h-14 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 p-2 shadow-2xl backdrop-blur-xl transition-colors focus-within:border-[var(--accent-primary)] sm:flex-nowrap sm:p-1.5 sm:pl-4"
               onSubmit={handleSeedSubmit}
             >
               <svg
@@ -1610,12 +1610,7 @@ export default function Home() {
           </div>
 
           {/* RIGHT: Stats & Details / PDF Viewer / 3D Toggle */}
-          <div className="pointer-events-auto order-3 flex w-full flex-col items-end gap-4 lg:order-none lg:w-80">
-            {/* View Mode Toggle */}
-            <div className="hidden lg:flex glass-card items-center gap-1 rounded-lg border border-white/10 p-1 shadow-lg backdrop-blur-md">
-              {rendererToggleButtons}
-            </div>
-
+          <div className="pointer-events-auto order-3 flex w-full flex-col items-end gap-4 lg:order-none lg:col-start-3 lg:w-full">
             {rendererNotice && (
               <div className="glass-card px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 text-[11px] font-medium">
                 {rendererNotice}
@@ -1769,53 +1764,58 @@ export default function Home() {
         </div>
 
         {/* BOTTOM LEFT: Controls Help */}
-        <div className="mt-auto pointer-events-auto self-start"> 
-          {/* Stats Badge */}
-          <div className="hidden lg:flex glass-card w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
-            <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-            {graphState.nodes.length} nodes · {graphState.links.length} links
-          </div>
-          <div className="hidden lg:inline-flex glass-card items-center gap-3 mt-4 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
-            {activeRenderer === "3d" ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Left click to rotate
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Scroll to zoom
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Click node to fly
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Scroll to zoom
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Drag to pan
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
-                  Hold to focus
-                </div>
-                <div className="w-px h-3 bg-white/10"></div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-amber-500"></span>
-                  Click leaf to expand
-                </div>
-              </>
-            )}
+        <div className="mt-auto pointer-events-auto self-start">
+          <div className="hidden lg:flex items-center gap-3">
+            {/* Stats Badge */}
+            <div className="glass-card flex h-10 w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md whitespace-nowrap lg:self-auto">
+              <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+              {graphState.nodes.length} nodes · {graphState.links.length} links
+            </div>
+            <div className="glass-card flex h-10 w-fit items-center gap-3 rounded-lg border border-white/10 bg-[#0a0a0a]/60 px-4 text-[10px] font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-xl whitespace-nowrap">
+              {activeRenderer === "3d" ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Left click to rotate
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Scroll to zoom
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Click node to fly
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Scroll to zoom
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Drag to pan
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-[var(--accent-primary)]"></span>
+                    Hold to focus
+                  </div>
+                  <div className="w-px h-3 bg-white/10"></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-amber-500"></span>
+                    Click leaf to expand
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="glass-card flex h-10 items-center gap-1 rounded-lg border border-white/10 p-1 shadow-lg backdrop-blur-md">
+              {rendererToggleButtons}
+            </div>
           </div>
         </div>
       </div>
@@ -1825,7 +1825,6 @@ export default function Home() {
           {rendererToggleButtons}
         </div>
       </div>
-
       {selectedNode && !viewingPdfId && isMobileDetailsOpen && (
         <div className="fixed inset-0 z-30 lg:hidden">
           <button
