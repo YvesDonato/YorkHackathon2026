@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 
 export default function SignupPage() {
     const [email, setEmail] = useState("");
@@ -76,18 +75,13 @@ export default function SignupPage() {
             <div className="w-full max-w-md">
                 {/* Logo/Header */}
                 <div className="text-center mb-8 animate-fade-in">
-                    <div className="relative mx-auto mb-4 h-[72px] w-[72px] overflow-hidden rounded-2xl shadow-lg">
-                        <Image
-                            src="/prismarineLogo.png"
-                            alt="Prismarine logo"
-                            fill
-                            sizes="72px"
-                            className="object-contain p-1"
-                            priority
-                        />
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#a855f7] to-[#ec4899] mb-4 shadow-lg">
+                        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
                     </div>
                     <h1 className="text-3xl font-bold gradient-text mb-2">Create Account</h1>
-                    <p className="text-[var(--text-secondary)]">Join Prismarine today</p>
+                    <p className="text-[var(--text-secondary)]">Join Research Graph Explorer today</p>
                 </div>
 
                 {/* Signup Form */}
