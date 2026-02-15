@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-@theme {
-  --radius-*: 0;
-}
-
-
 /* ============================================
    Design System - Color & Typography Tokens
    ============================================ */

@@ -661,7 +661,7 @@ export default function Home() {
           const t = toNodeId(link.target);
           return (s === focusedNodeId || t === focusedNodeId) ? 1 : 0.1;
         }
-        if (selectedNodeId && isLinkConnectedToSelected(link)) return 1;
+        if (selectedNodeId && isLinkConnectedToSelected(link as any)) return 1;
         if (selectedNodeId) return 0.15;
         return 0.6;
       })
@@ -671,7 +671,7 @@ export default function Home() {
           const t = toNodeId(link.target);
           return (s === focusedNodeId || t === focusedNodeId) ? "#a855f7" : "#404040";
         }
-        if (selectedNodeId && isLinkConnectedToSelected(link)) return "#a855f7";
+        if (selectedNodeId && isLinkConnectedToSelected(link as any)) return "#a855f7";
         return "#404040";
       })
       .attr("stroke-width", (link: any) => {
@@ -680,7 +680,7 @@ export default function Home() {
           const t = toNodeId(link.target);
           return (s === focusedNodeId || t === focusedNodeId) ? 3 : 1;
         }
-        if (selectedNodeId && isLinkConnectedToSelected(link)) return 3;
+        if (selectedNodeId && isLinkConnectedToSelected(link as any)) return 3;
         return 2;
       });
 
