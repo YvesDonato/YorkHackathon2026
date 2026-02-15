@@ -146,3 +146,27 @@ Notes:
 
 - Frontend CSP in `frontend/next.config.ts` only allows first-party scripts. If Cloudflare still injects beacon, browser will block it.
 - This beacon issue is separate from backend API CORS for `/api/*`.
+
+## 7. Frontend Build Fails In Docker (`RUN npm run build`)
+
+If Coolify only shows a generic failure at `frontend/Dockerfile` build step:
+
+1. Confirm Coolify is deploying the same git commit you validated locally.
+   A commit/source mismatch can pass locally and fail remotely.
+2. Reproduce with a clean install from repo root:
+
+```bash
+docker compose --env-file .env build frontend
+```
+
+3. If you need an npm-only reproduction:
+
+```bash
+cd frontend
+npm ci --include=dev
+npm run build
+```
+
+This repository now forces dev dependencies during image build (`npm ci --include=dev`)
+and prints full Next.js build output when `npm run build` fails, so Coolify logs include
+the actual compiler/runtime error instead of only the Dockerfile line number.
