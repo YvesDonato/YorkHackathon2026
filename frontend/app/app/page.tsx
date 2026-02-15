@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -37,7 +38,29 @@ type GraphState = {
   links: ApiGraphLink[];
 };
 
+type ResizeHandle =
+  | "move"
+  | "left"
+  | "right"
+  | "bottom"
+  | "corner-left"
+  | "corner-right";
+type PdfPanelSize = {
+  width: number;
+  height: number;
+};
+type PdfWindowPosition = {
+  x: number;
+  y: number;
+};
+
 const DEFAULT_SEED_LINK = "";
+const DEFAULT_PDF_PANEL_SIZE: PdfPanelSize = { width: 560, height: 700 };
+const DEFAULT_PDF_ASPECT_RATIO =
+  DEFAULT_PDF_PANEL_SIZE.height / DEFAULT_PDF_PANEL_SIZE.width;
+const MIN_PDF_PANEL_WIDTH = 320;
+const MIN_PDF_PANEL_HEIGHT = 300;
+const PDF_WINDOW_MARGIN = 8;
 const RENDERER_MODE_STORAGE_KEY = "prismarine_renderer_mode";
 const ENABLE_3D_EXPERIMENTAL =
   process.env.NEXT_PUBLIC_ENABLE_3D_EXPERIMENTAL === "true";
@@ -56,6 +79,18 @@ const GraphRenderer3D = dynamic(
   },
 );
 
+const PdfViewer = dynamic(
+  () => import("@/app/components/PdfViewer"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full min-h-[280px] items-center justify-center text-sm text-[var(--text-secondary)]">
+        Loading PDF viewer...
+      </div>
+    ),
+  },
+);
+
 const createEmptyGraphState = (): GraphState => ({ nodes: [], links: [] });
 
 const toNodeId = (endpoint: string | { id: string }): string =>
@@ -63,6 +98,9 @@ const toNodeId = (endpoint: string | { id: string }): string =>
 
 const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : "Unexpected error";
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -93,6 +131,26 @@ export default function Home() {
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null); // For 2D
   const [viewingPdfId, setViewingPdfId] = useState<string | null>(null);
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
+  const [pdfPanelSize, setPdfPanelSize] = useState<PdfPanelSize>(
+    DEFAULT_PDF_PANEL_SIZE,
+  );
+  const [pdfAspectRatio, setPdfAspectRatio] = useState(
+    DEFAULT_PDF_ASPECT_RATIO,
+  );
+  const [pdfWindowPosition, setPdfWindowPosition] = useState<PdfWindowPosition>(
+    { x: 24, y: 96 },
+  );
+  const [isPdfFullscreen, setIsPdfFullscreen] = useState(false);
+  const [activeResizeHandle, setActiveResizeHandle] =
+    useState<ResizeHandle | null>(null);
+  const resizeStartRef = useRef<{
+    mouseX: number;
+    mouseY: number;
+    width: number;
+    height: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Renderer State
   const [rendererMode, setRendererMode] = useState<RendererMode>("2d");
@@ -202,6 +260,285 @@ export default function Home() {
     console.error("3D renderer failed, falling back to 2D:", error);
     setRendererNotice("3D renderer failed. Switched to 2D renderer.");
     setRendererMode("2d");
+  }, []);
+
+  const getPdfPanelBounds = useCallback(() => {
+    const maxWidth = Math.max(
+      MIN_PDF_PANEL_WIDTH,
+      Math.min(1200, viewport.width - PDF_WINDOW_MARGIN * 2),
+    );
+    const maxHeight = Math.max(
+      MIN_PDF_PANEL_HEIGHT,
+      viewport.height - PDF_WINDOW_MARGIN * 2,
+    );
+    return { maxWidth, maxHeight };
+  }, [viewport.height, viewport.width]);
+
+  const clampPdfWindowPosition = useCallback(
+    (x: number, y: number, width: number, height: number): PdfWindowPosition => {
+      const maxX = Math.max(PDF_WINDOW_MARGIN, viewport.width - width - PDF_WINDOW_MARGIN);
+      const maxY = Math.max(
+        PDF_WINDOW_MARGIN,
+        viewport.height - height - PDF_WINDOW_MARGIN,
+      );
+      return {
+        x: clamp(x, PDF_WINDOW_MARGIN, maxX),
+        y: clamp(y, PDF_WINDOW_MARGIN, maxY),
+      };
+    },
+    [viewport.height, viewport.width],
+  );
+
+  useEffect(() => {
+    const { maxWidth, maxHeight } = getPdfPanelBounds();
+    setPdfPanelSize((current) => ({
+      width: clamp(current.width, MIN_PDF_PANEL_WIDTH, maxWidth),
+      height: clamp(current.height, MIN_PDF_PANEL_HEIGHT, maxHeight),
+    }));
+  }, [getPdfPanelBounds]);
+
+  useEffect(() => {
+    setPdfWindowPosition((current) =>
+      clampPdfWindowPosition(
+        current.x,
+        current.y,
+        pdfPanelSize.width,
+        pdfPanelSize.height,
+      ),
+    );
+  }, [
+    clampPdfWindowPosition,
+    pdfPanelSize.height,
+    pdfPanelSize.width,
+    viewport.height,
+    viewport.width,
+  ]);
+
+  useEffect(() => {
+    if (!viewingPdfId) {
+      setIsPdfFullscreen(false);
+      setActiveResizeHandle(null);
+      resizeStartRef.current = null;
+      return;
+    }
+
+    const centered = clampPdfWindowPosition(
+      (viewport.width - pdfPanelSize.width) / 2,
+      (viewport.height - pdfPanelSize.height) / 2,
+      pdfPanelSize.width,
+      pdfPanelSize.height,
+    );
+    setPdfWindowPosition(centered);
+  }, [
+    clampPdfWindowPosition,
+    pdfPanelSize.height,
+    pdfPanelSize.width,
+    viewingPdfId,
+    viewport.height,
+    viewport.width,
+  ]);
+
+  useEffect(() => {
+    if (!isPdfFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsPdfFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isPdfFullscreen]);
+
+  useEffect(() => {
+    if (!activeResizeHandle) return;
+
+    const cursor =
+      activeResizeHandle === "move"
+        ? "move"
+        : activeResizeHandle === "right" || activeResizeHandle === "left"
+        ? "ew-resize"
+        : activeResizeHandle === "bottom"
+          ? "ns-resize"
+          : activeResizeHandle === "corner-right"
+            ? "nwse-resize"
+            : "nesw-resize";
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = cursor;
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (event: MouseEvent) => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+
+      const deltaX = event.clientX - start.mouseX;
+      const deltaY = event.clientY - start.mouseY;
+      const { maxWidth, maxHeight } = getPdfPanelBounds();
+      const ratio =
+        Number.isFinite(pdfAspectRatio) && pdfAspectRatio > 0
+          ? pdfAspectRatio
+          : DEFAULT_PDF_ASPECT_RATIO;
+      const minWidth = Math.max(MIN_PDF_PANEL_WIDTH, MIN_PDF_PANEL_HEIGHT / ratio);
+      const rightEdge = start.x + start.width;
+      const maxHeightFromTop = Math.min(
+        maxHeight,
+        viewport.height - start.y - PDF_WINDOW_MARGIN,
+      );
+
+      let nextX = start.x;
+      let nextY = start.y;
+      let nextWidth = start.width;
+      let nextHeight = start.height;
+
+      const clampWidthFromTopLeft = (
+        desiredWidth: number,
+        x: number,
+      ): number => {
+        const maxWidthFromLeft = Math.min(
+          maxWidth,
+          viewport.width - x - PDF_WINDOW_MARGIN,
+        );
+        const maxWidthFromHeight = maxHeightFromTop / ratio;
+        const maxAllowedWidth = Math.max(
+          Math.min(maxWidthFromLeft, maxWidthFromHeight),
+          1,
+        );
+        const minAllowedWidth = Math.min(minWidth, maxAllowedWidth);
+        return clamp(desiredWidth, minAllowedWidth, maxAllowedWidth);
+      };
+
+      switch (activeResizeHandle) {
+        case "move": {
+          nextX = start.x + deltaX;
+          nextY = start.y + deltaY;
+          break;
+        }
+        case "right":
+        case "corner-right": {
+          const widthDeltaForCorner =
+            Math.abs(deltaY / ratio) > Math.abs(deltaX)
+              ? deltaY / ratio
+              : deltaX;
+          const desiredWidth =
+            activeResizeHandle === "corner-right"
+              ? start.width + widthDeltaForCorner
+              : start.width + deltaX;
+          nextWidth = clampWidthFromTopLeft(desiredWidth, start.x);
+          nextHeight = nextWidth * ratio;
+          break;
+        }
+        case "left":
+        case "corner-left": {
+          const widthDeltaForCorner =
+            Math.abs(deltaY / ratio) > Math.abs(deltaX)
+              ? deltaY / ratio
+              : -deltaX;
+          const desiredWidth =
+            activeResizeHandle === "corner-left"
+              ? start.width + widthDeltaForCorner
+              : start.width - deltaX;
+          const maxWidthFromLeftEdge = Math.min(
+            maxWidth,
+            rightEdge - PDF_WINDOW_MARGIN,
+          );
+          const maxWidthFromHeight = maxHeightFromTop / ratio;
+          const maxAllowedWidth = Math.max(
+            Math.min(maxWidthFromLeftEdge, maxWidthFromHeight),
+            1,
+          );
+          const minAllowedWidth = Math.min(minWidth, maxAllowedWidth);
+          nextWidth = clamp(desiredWidth, minAllowedWidth, maxAllowedWidth);
+          nextX = rightEdge - nextWidth;
+          nextHeight = nextWidth * ratio;
+          break;
+        }
+        case "bottom": {
+          const desiredWidth = (start.height + deltaY) / ratio;
+          nextWidth = clampWidthFromTopLeft(desiredWidth, start.x);
+          nextHeight = nextWidth * ratio;
+          break;
+        }
+      }
+
+      const clampedPosition = clampPdfWindowPosition(
+        nextX,
+        nextY,
+        nextWidth,
+        nextHeight,
+      );
+      setPdfPanelSize({ width: nextWidth, height: nextHeight });
+      setPdfWindowPosition(clampedPosition);
+    };
+
+    const onMouseUp = () => {
+      setActiveResizeHandle(null);
+      resizeStartRef.current = null;
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [
+    activeResizeHandle,
+    clampPdfWindowPosition,
+    getPdfPanelBounds,
+    pdfAspectRatio,
+    viewport.height,
+    viewport.width,
+  ]);
+
+  const handlePdfResizeMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, handle: ResizeHandle) => {
+      if (isPdfFullscreen) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      resizeStartRef.current = {
+        mouseX: event.clientX,
+        mouseY: event.clientY,
+        width: pdfPanelSize.width,
+        height: pdfPanelSize.height,
+        x: pdfWindowPosition.x,
+        y: pdfWindowPosition.y,
+      };
+      setActiveResizeHandle(handle);
+    },
+    [
+      isPdfFullscreen,
+      pdfPanelSize.height,
+      pdfPanelSize.width,
+      pdfWindowPosition.x,
+      pdfWindowPosition.y,
+    ],
+  );
+
+  const handlePdfHeaderMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("a,button")) return;
+      handlePdfResizeMouseDown(event, "move");
+    },
+    [handlePdfResizeMouseDown],
+  );
+
+  const handleClosePdfViewer = useCallback(() => {
+    setViewingPdfId(null);
+    setIsPdfFullscreen(false);
+    setActiveResizeHandle(null);
+    setPdfAspectRatio(DEFAULT_PDF_ASPECT_RATIO);
+    resizeStartRef.current = null;
+  }, []);
+
+  const handlePdfAspectRatioChange = useCallback((ratio: number) => {
+    if (!Number.isFinite(ratio) || ratio <= 0) return;
+    setPdfAspectRatio(ratio);
   }, []);
 
   // Graph Operations
@@ -403,7 +740,7 @@ export default function Home() {
 
     const linkSelection = zoomContainer
       .append("g")
-      .attr("stroke", "#404040")
+      .attr("stroke", "#9ca3af")
       .attr("stroke-opacity", 0.6)
       .selectAll<SVGLineElement, ApiGraphLink>("line")
       .data(
@@ -750,10 +1087,10 @@ export default function Home() {
           const t = toNodeId(link.target);
           return s === focusedNodeId || t === focusedNodeId
             ? "#a855f7"
-            : "#404040";
+            : "#9ca3af";
         }
         if (selectedNodeId && isLinkConnectedToSelected(link as any)) return "#a855f7";
-        return "#404040";
+        return "#9ca3af";
       })
       .attr("stroke-width", (link: any) => {
         if (isFocusActive) {
@@ -1097,16 +1434,15 @@ export default function Home() {
                 {rendererNotice}
               </div>
             )}
-
-            {/* Stats Badge */}
-            <div className="glass-card flex w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
-              <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-              {graphState.nodes.length} nodes · {graphState.links.length} links
-            </div>
-
-            {viewingPdfId ? (
+            {false ? (
               /* ── PDF / HTML Viewer Panel ── */
-              <aside className="glass-card rounded-2xl border border-white/10 shadow-2xl w-full h-[calc(100vh-12rem)] backdrop-blur-xl bg-[#0a0a0a]/90 animate-slide-up flex flex-col overflow-hidden">
+              <aside
+                className="glass-card relative rounded-2xl border border-white/10 shadow-2xl h-auto backdrop-blur-xl bg-[#0a0a0a]/90 animate-slide-up flex flex-col overflow-hidden"
+                style={{
+                  width: `${pdfPanelSize.width}px`,
+                  height: `${pdfPanelSize.height}px`,
+                }}
+              >
                 {/* Viewer Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
@@ -1151,7 +1487,26 @@ export default function Home() {
                       Open PDF
                     </a>
                     <button
-                      onClick={() => setViewingPdfId(null)}
+                      onClick={() => setIsPdfFullscreen(true)}
+                      className="px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] hover:text-white flex items-center gap-1 transition-colors rounded-lg hover:bg-white/5"
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"
+                        />
+                      </svg>
+                      Fullscreen
+                    </button>
+                    <button
+                      onClick={handleClosePdfViewer}
                       className="p-1.5 hover:bg-white/10 rounded-lg text-[var(--text-secondary)] hover:text-white transition-colors"
                     >
                       <svg
@@ -1170,14 +1525,37 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-                {/* Iframe: arXiv PDF viewer */}
-                <iframe
-                  src={`/pdf-proxy/${viewingPdfId}`}
-                  className="flex-1 w-full bg-white rounded-b-2xl"
-                  title={`Paper ${viewingPdfId}`}
+                <PdfViewer
+                  pdfId={viewingPdfId!}
+                  onAspectRatioChange={handlePdfAspectRatioChange}
+                />
+
+                <div
+                  role="separator"
+                  aria-label="Resize PDF panel width"
+                  className="absolute right-0 top-0 h-full w-2 cursor-ew-resize"
+                  onMouseDown={(event) =>
+                    handlePdfResizeMouseDown(event, "right")
+                  }
+                />
+                <div
+                  role="separator"
+                  aria-label="Resize PDF panel height"
+                  className="absolute bottom-0 left-0 h-2 w-full cursor-ns-resize"
+                  onMouseDown={(event) =>
+                    handlePdfResizeMouseDown(event, "bottom")
+                  }
+                />
+                <div
+                  role="separator"
+                  aria-label="Resize PDF panel width and height"
+                  className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
+                  onMouseDown={(event) =>
+                    handlePdfResizeMouseDown(event, "corner-right")
+                  }
                 />
               </aside>
-            ) : (
+            ) : !viewingPdfId ? (
               <aside className="glass-card p-5 rounded-2xl border border-white/10 shadow-2xl w-full max-h-[calc(100vh-8rem)] overflow-y-auto backdrop-blur-xl bg-[#0a0a0a]/80 animate-slide-up">
                 <div className="flex items-center gap-2 mb-4">
                   <svg
@@ -1364,13 +1742,18 @@ export default function Home() {
                   </div>
                 )}
               </aside>
-            )}
+            ) : null}
           </div>
         </div>
 
         {/* BOTTOM LEFT: Controls Help */}
-        <div className="mt-auto pointer-events-auto self-start">
-          <div className="glass-card inline-flex items-center gap-3 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
+        <div className="mt-auto pointer-events-auto self-start"> 
+          {/* Stats Badge */}
+          <div className="glass-card flex w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
+            <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+            {graphState.nodes.length} nodes · {graphState.links.length} links
+          </div>
+          <div className="glass-card inline-flex items-center gap-3 mt-4 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
             {activeRenderer === "3d" ? (
               <>
                 <div className="flex items-center gap-1.5">
@@ -1414,6 +1797,225 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {viewingPdfId && !isPdfFullscreen && (
+        <div className="fixed inset-0 z-40 pointer-events-none">
+          <aside
+            className="pointer-events-auto absolute glass-card flex h-auto flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a]/92 shadow-2xl backdrop-blur-xl"
+            style={{
+              left: `${pdfWindowPosition.x}px`,
+              top: `${pdfWindowPosition.y}px`,
+              width: `${pdfPanelSize.width}px`,
+              height: `${pdfPanelSize.height}px`,
+            }}
+          >
+            <div
+              className="flex items-center justify-between border-b border-white/10 px-4 py-3"
+              onMouseDown={handlePdfHeaderMouseDown}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <svg
+                  className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+                <span className="truncate text-sm font-bold text-[var(--text-primary)]">
+                  {graphState.nodes.find((n) => n.id === viewingPdfId)?.label ??
+                    viewingPdfId}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href={`https://arxiv.org/pdf/${viewingPdfId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--accent-primary)] flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
+                  </svg>
+                  Open PDF
+                </a>
+                <button
+                  onClick={() => setIsPdfFullscreen(true)}
+                  className="px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] hover:text-white flex items-center gap-1 transition-colors rounded-lg hover:bg-white/5"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"
+                    />
+                  </svg>
+                  Fullscreen
+                </button>
+                <button
+                  onClick={handleClosePdfViewer}
+                  className="p-1.5 rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <PdfViewer
+              pdfId={viewingPdfId!}
+              onAspectRatioChange={handlePdfAspectRatioChange}
+            />
+
+            <div
+              role="separator"
+              aria-label="Resize PDF panel from left edge"
+              className="absolute left-0 top-0 h-full w-2 cursor-ew-resize"
+              onMouseDown={(event) => handlePdfResizeMouseDown(event, "left")}
+            />
+            <div
+              role="separator"
+              aria-label="Resize PDF panel from right edge"
+              className="absolute right-0 top-0 h-full w-2 cursor-ew-resize"
+              onMouseDown={(event) => handlePdfResizeMouseDown(event, "right")}
+            />
+            <div
+              role="separator"
+              aria-label="Resize PDF panel height"
+              className="absolute bottom-0 left-0 h-2 w-full cursor-ns-resize"
+              onMouseDown={(event) =>
+                handlePdfResizeMouseDown(event, "bottom")
+              }
+            />
+            <div
+              role="separator"
+              aria-label="Resize PDF panel from bottom left corner"
+              className="absolute bottom-0 left-0 h-4 w-4 cursor-nesw-resize"
+              onMouseDown={(event) =>
+                handlePdfResizeMouseDown(event, "corner-left")
+              }
+            />
+            <div
+              role="separator"
+              aria-label="Resize PDF panel from bottom right corner"
+              className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
+              onMouseDown={(event) =>
+                handlePdfResizeMouseDown(event, "corner-right")
+              }
+            />
+          </aside>
+        </div>
+      )}
+
+      {viewingPdfId && isPdfFullscreen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => setIsPdfFullscreen(false)}
+        >
+          <aside
+            className="glass-card flex h-auto max-h-[92vh] w-full max-w-[92vw] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a]/95 shadow-2xl lg:max-w-[1400px]"
+            onClick={(event) => event.stopPropagation()}
+            style={{ height: "min(92vh, 1000px)" }}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <svg
+                  className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+                <span className="truncate text-sm font-bold text-[var(--text-primary)]">
+                  {graphState.nodes.find((n) => n.id === viewingPdfId)?.label ??
+                    viewingPdfId}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setIsPdfFullscreen(false)}
+                  className="px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] hover:text-white flex items-center gap-1 transition-colors rounded-lg hover:bg-white/5"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4"
+                    />
+                  </svg>
+                  Exit Fullscreen
+                </button>
+                <button
+                  onClick={handleClosePdfViewer}
+                  className="p-1.5 rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <PdfViewer
+              pdfId={viewingPdfId!}
+              onAspectRatioChange={handlePdfAspectRatioChange}
+            />
+          </aside>
+        </div>
+      )}
     </>
   );
 }

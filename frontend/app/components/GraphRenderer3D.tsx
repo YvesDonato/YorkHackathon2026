@@ -126,7 +126,7 @@ export default function GraphRenderer3D({
                     if (source === selectedNodeId || target === selectedNodeId) {
                         return "rgba(168, 85, 247, 0.8)";
                     }
-                    return "rgba(255,255,255,0.2)";
+                    return "rgba(209, 213, 219, 0.45)";
                 }}
                 linkWidth={(link: any) => {
                     const source = toNodeId(link.source);
