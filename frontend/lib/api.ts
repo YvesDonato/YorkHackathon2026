@@ -191,11 +191,12 @@ export const deleteSession = (sessionId: string): Promise<void> =>
 
 export type SummaryAudioRequest = {
   summary: string;
-  lang: "en" | "fr" | "es" | "hi" | "ar" | "ur";
+  lang: "en" | "fr" | "es" | "hi";
 };
 
 export const generateSummaryAudio = async (
-  payload: SummaryAudioRequest,
+  summary: string,
+  lang: SummaryAudioRequest["lang"],
 ): Promise<Blob> => {
   const response = await fetch(buildUrl("/api/audio/generate", {}), {
     method: "POST",
@@ -203,7 +204,7 @@ export const generateSummaryAudio = async (
       "Content-Type": "application/json",
       Accept: "audio/mpeg",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ summary, lang }),
   });
 
   if (!response.ok) {

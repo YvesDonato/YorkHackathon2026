@@ -134,7 +134,9 @@ export default function NodePage() {
                 {paper.summary || "No summary provided."}
               </p>
 
-              <SummaryAudioPlayer summary={paper.summary ?? ""} />
+              <div className="flex justify-end">
+                <SummaryAudioPlayer summary={paper.summary ?? ""} />
+              </div>
             </section>
 
             <section>

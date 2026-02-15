@@ -19,6 +19,7 @@ import {
   type ApiGraphNode,
   type Session,
 } from "@/lib/api";
+import SummaryAudioPlayer from "@/app/components/SummaryAudioPlayer";
 
 declare global {
   interface Window {
@@ -945,6 +946,10 @@ export default function Home() {
                     </svg>
                     View Paper
                   </button>
+
+                  <div className="pt-3 border-t border-[var(--border-secondary)]">
+                    <SummaryAudioPlayer summary={selectedNode.content ?? ""} variant="dark" />
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
