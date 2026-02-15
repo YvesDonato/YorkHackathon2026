@@ -10,6 +10,7 @@ import {
 } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
+import SpriteText from "three-spritetext";
 import {
   createSession,
   listSessions,
@@ -19,6 +20,7 @@ import {
   type ApiGraphNode,
   type Session,
 } from "@/lib/api";
+import GraphErrorBoundary from "@/app/components/GraphErrorBoundary";
 
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
@@ -237,53 +239,53 @@ export default function Home() {
         className="fixed inset-0 z-0 bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a]"
       >
         {viewport.width > 0 && (
-          <ForceGraph3D
-            ref={fgRef}
-            width={viewport.width}
-            height={viewport.height}
-            graphData={graphState}
-            backgroundColor="rgba(0,0,0,0)"
-            nodeLabel="label"
-            nodeColor={(node: any) => {
-              const isRoot = node.id === rootNodeId;
-              const isHighlighted = node.id === hoveredNodeId || node.id === selectedNodeId;
+          <GraphErrorBoundary>
+            <ForceGraph3D
+              ref={fgRef}
+              width={viewport.width}
+              height={viewport.height}
+              graphData={graphState}
+              backgroundColor="rgba(0,0,0,0)"
+              nodeLabel="label"
+              nodeColor={(node: any) => {
+                const isRoot = node.id === rootNodeId;
+                const isHighlighted = node.id === hoveredNodeId || node.id === selectedNodeId;
 
-              if (isRoot) {
-                return isHighlighted ? "#f9a8d4" : "#ec4899"; // Pink-300 : Pink-500
-              }
-              return isHighlighted ? "#d8b4fe" : "#a855f7"; // Purple-300 : Purple-500
-            }}
-            onNodeHover={(node: any) => setHoveredNodeId(node ? node.id : null)}
-            nodeRelSize={6}
-            nodeThreeObjectExtend={true}
-            nodeThreeObject={(node: any) => {
-              // eslint-disable-next-line @typescript-eslint/no-var-requires
-              const SpriteText = require("three-spritetext").default;
-              const sprite = new SpriteText(node.label);
-              sprite.material.depthWrite = false; // Prevent occlusion issues
-              sprite.color = node.id === selectedNodeId ? '#fff' : 'rgba(255, 255, 255, 0.8)';
-              sprite.textHeight = node.id === selectedNodeId ? 6 : 4;
-              sprite.center.y = 0; // Center vertically on node
-              sprite.position.y = 12; // Offset above the node
-              return sprite;
-            }}
-            linkColor={(link: any) => {
-              const s = toNodeId(link.source);
-              const t = toNodeId(link.target);
-              if (s === selectedNodeId || t === selectedNodeId) return "rgba(168, 85, 247, 0.8)";
-              return "rgba(255,255,255,0.2)";
-            }}
-            linkWidth={(link: any) => {
-              const s = toNodeId(link.source);
-              const t = toNodeId(link.target);
-              return (s === selectedNodeId || t === selectedNodeId) ? 2 : 0.5;
-            }}
-            linkOpacity={0.3}
-            linkLabel={(link: any) => `Similarity: ${(link.similarity * 100).toFixed(0)}%`}
-            onNodeClick={handleNodeClick}
-            onBackgroundClick={() => setSelectedNodeId(null)}
-            controlType="orbit"
-          />
+                if (isRoot) {
+                  return isHighlighted ? "#f9a8d4" : "#ec4899"; // Pink-300 : Pink-500
+                }
+                return isHighlighted ? "#d8b4fe" : "#a855f7"; // Purple-300 : Purple-500
+              }}
+              onNodeHover={(node: any) => setHoveredNodeId(node ? node.id : null)}
+              nodeRelSize={6}
+              nodeThreeObjectExtend={true}
+              nodeThreeObject={(node: any) => {
+                const sprite = new SpriteText(node.label);
+                sprite.material.depthWrite = false; // Prevent occlusion issues
+                sprite.color = node.id === selectedNodeId ? "#fff" : "rgba(255, 255, 255, 0.8)";
+                sprite.textHeight = node.id === selectedNodeId ? 6 : 4;
+                sprite.center.y = 0; // Center vertically on node
+                sprite.position.y = 12; // Offset above the node
+                return sprite;
+              }}
+              linkColor={(link: any) => {
+                const s = toNodeId(link.source);
+                const t = toNodeId(link.target);
+                if (s === selectedNodeId || t === selectedNodeId) return "rgba(168, 85, 247, 0.8)";
+                return "rgba(255,255,255,0.2)";
+              }}
+              linkWidth={(link: any) => {
+                const s = toNodeId(link.source);
+                const t = toNodeId(link.target);
+                return s === selectedNodeId || t === selectedNodeId ? 2 : 0.5;
+              }}
+              linkOpacity={0.3}
+              linkLabel={(link: any) => `Similarity: ${(link.similarity * 100).toFixed(0)}%`}
+              onNodeClick={handleNodeClick}
+              onBackgroundClick={() => setSelectedNodeId(null)}
+              controlType="orbit"
+            />
+          </GraphErrorBoundary>
         )}
 
         {isLoadingGraph && (
