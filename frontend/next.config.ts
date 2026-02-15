@@ -15,7 +15,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' ws: wss: https://cloudflareinsights.com https://static.cloudflareinsights.com",
+      "connect-src 'self' ws: wss: https://*.cloudflareinsights.com https://cloudflareinsights.com",
       "worker-src 'self' blob:",
       "frame-src 'self'",
     ].join("; "),
