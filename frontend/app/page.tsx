@@ -1,7 +1,5 @@
 import Link from "next/link";
 import Image from "next/image";
-import FeatureCards from "./components/FeatureCards";
-import LandingNodeBackground from "./components/LandingNodeBackground";
 
 const features = [
   {
@@ -24,7 +22,6 @@ const features = [
 export default function HomePage() {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,#1f1230_0%,#0a0a0a_40%,#050505_100%)] text-[var(--text-primary)] lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
-      <LandingNodeBackground />
       <div className="landing-orb pointer-events-none absolute -left-24 top-20 h-72 w-72 bg-[#a855f7]/25 blur-3xl" />
       <div className="landing-orb landing-orb-delay pointer-events-none absolute -right-24 bottom-16 h-72 w-72 bg-[#ec4899]/20 blur-3xl" />
 
@@ -87,7 +84,21 @@ export default function HomePage() {
           </div>
         </section>
 
-        <FeatureCards features={features} />
+        <section className="mt-8 grid gap-3 md:mt-10 md:grid-cols-3 lg:mt-6 lg:items-stretch">
+          {features.map((feature) => (
+            <article
+              key={feature.title}
+              className="relative border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm transition-colors duration-200 hover:z-10 hover:border-[var(--accent-primary)]/40 hover:bg-white/[0.05] hover:shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+            >
+              <h2 className="text-base font-bold text-white lg:text-[15px]">
+                {feature.title}
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)] lg:text-[13px]">
+                {feature.description}
+              </p>
+            </article>
+          ))}
+        </section>
       </main>
     </div>
   );
