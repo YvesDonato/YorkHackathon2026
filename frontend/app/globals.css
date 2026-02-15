@@ -1,10 +1,4 @@
 @import "tailwindcss";
-
-@theme {
-  --radius-*: 0;
-}
-
-
 /* ============================================
    Design System - Color & Typography Tokens
    ============================================ */
@@ -313,3 +307,6 @@ a:hover {
   border-radius: var(--radius-lg);
   font-size: 0.875rem;
 }
+
+
+
