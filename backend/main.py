@@ -9,7 +9,6 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from routes.audio import router as audio_router
 
 from auth import get_current_user, router as auth_router, validate_auth_config
 from database import close_db, connect_db, get_db
@@ -53,7 +52,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router)
-app.include_router(audio_router)
 
 
 @app.get("/healthz")
@@ -762,6 +760,124 @@ async def delete_session(
     await db.sessions.delete_one({"_id": oid})
 
     return None
+
+
+@app.post("/sessions/{session_id}/expand/{node_id}", response_model=GraphResponse)
+async def expand_session_node(
+    session_id: str,
+    node_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Expand a node in a session by discovering its related papers and merging them in.
+
+    Uses the session's mode (grounding or references) to discover papers for the
+    given node, adds only new (unseen) papers to the session, then recomputes
+    similarity links across ALL session papers and returns the full updated graph.
+    """
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        oid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=422, detail="Invalid session ID format")
+
+    db = get_db()
+    user_id = current_user["_id"]
+
+    # Verify session ownership
+    session = await db.sessions.find_one({"_id": oid, "user_id": user_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    mode = session.get("mode", "grounding")
+    seed_id = session["seed_paper_id"]
+
+    # Get existing paper IDs in this session
+    existing_sp_docs = await db.session_papers.find({"session_id": oid}).to_list(length=None)
+    existing_ids = {sp["arxiv_id"] for sp in existing_sp_docs}
+
+    # Verify the node_id is actually in this session
+    if node_id not in existing_ids:
+        raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found in this session")
+
+    # Generate the graph for the clicked node (discovers its related papers)
+    paper_id = canonicalize_paper_id(node_id)
+    graph_response, new_nodes, new_embeddings = await _generate_graph_internal(paper_id, mode)
+
+    # Filter to only truly new papers (not already in the session)
+    now = datetime.now(timezone.utc)
+    added_count = 0
+    for node in new_nodes:
+        if node.id not in existing_ids:
+            await db.session_papers.insert_one({
+                "session_id": oid,
+                "arxiv_id": node.id,
+                "is_seed": False,
+                "added_at": now,
+            })
+            existing_ids.add(node.id)
+            added_count += 1
+
+    # Update last_accessed
+    await db.sessions.update_one(
+        {"_id": oid},
+        {"$set": {"last_accessed": now}},
+    )
+
+    # Now rebuild the full graph from ALL session papers
+    all_sp_docs = await db.session_papers.find({"session_id": oid}).to_list(length=None)
+    all_arxiv_ids = [sp["arxiv_id"] for sp in all_sp_docs]
+
+    paper_docs = await db.graph_papers.find({"arxiv_id": {"$in": all_arxiv_ids}}).to_list(length=None)
+
+    nodes: list[GraphNode] = []
+    node_embeddings: dict[str, list[float]] = {}
+
+    for paper in paper_docs:
+        node = GraphNode(
+            id=paper["arxiv_id"],
+            label=paper["title"],
+            content=paper.get("summary", ""),
+            url=paper.get("url"),
+            published=paper.get("published"),
+            authors=paper.get("authors", []),
+            summary=paper.get("summary", ""),
+            is_root=(paper["arxiv_id"] == seed_id),
+        )
+        nodes.append(node)
+        if "embedding" in paper:
+            node_embeddings[paper["arxiv_id"]] = paper["embedding"]
+
+    # Build k-NN links across ALL session papers
+    K_NEIGHBORS = 3
+    links: list[GraphLink] = []
+    seen_link_keys: set[tuple[str, str]] = set()
+
+    if node_embeddings:
+        for i, node_a in enumerate(nodes):
+            if node_a.id not in node_embeddings:
+                continue
+            similarities: list[tuple[int, float]] = []
+            for j, node_b in enumerate(nodes):
+                if i == j or node_b.id not in node_embeddings:
+                    continue
+                sim = cosine_similarity(node_embeddings[node_a.id], node_embeddings[node_b.id])
+                similarities.append((j, sim))
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            for j, sim in similarities[:K_NEIGHBORS]:
+                key = tuple(sorted((node_a.id, nodes[j].id)))
+                if key not in seen_link_keys:
+                    links.append(GraphLink(source=node_a.id, target=nodes[j].id, similarity=round(sim, 4)))
+                    seen_link_keys.add(key)
+
+    return GraphResponse(
+        seed_id=seed_id,
+        nodes=nodes,
+        links=links,
+        partial_data=False,
+        references_error=None,
+    )
 
 
 @app.get("/graph/search", response_model=list[GraphSearchResult])

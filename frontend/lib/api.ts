@@ -189,6 +189,11 @@ export const updateSession = (sessionId: string, payload: SessionUpdate): Promis
 export const deleteSession = (sessionId: string): Promise<void> =>
   requestJson<void>(`/sessions/${sessionId}`, {}, { method: "DELETE" });
 
+export const expandSessionNode = (sessionId: string, nodeId: string): Promise<ApiGraphResponse> =>
+  requestJson<ApiGraphResponse>(`/sessions/${sessionId}/expand/${nodeId}`, {}, { method: "POST" });
+
+
+
 export type SummaryAudioRequest = {
   summary: string;
   lang: "en" | "fr" | "es" | "hi" | "ar" | "ur";
@@ -214,3 +219,4 @@ export const generateSummaryAudio = async (
 
   return response.blob();
 };
+
