@@ -346,11 +346,10 @@ export default function Home() {
       .append("g")
       .attr("stroke", "#404040")
       .attr("stroke-opacity", 0.6)
-      .selectAll("line")
+      .selectAll<SVGLineElement, ApiGraphLink>("line")
       .data(
-        simulationLinks,
-        (link: { source: string | { id: string }; target: string | { id: string } }) =>
-          `${toNodeId(link.source)}->${toNodeId(link.target)}`,
+        simulationLinks as ApiGraphLink[],
+        (link: ApiGraphLink) => `${toNodeId(link.source)}->${toNodeId(link.target)}`,
       )
       .join("line")
       .attr("stroke-width", 2);
@@ -359,8 +358,8 @@ export default function Home() {
 
     const nodeSelection = zoomContainer
       .append("g")
-      .selectAll("g")
-      .data(simulationNodes, (node: ApiGraphNode) => node.id)
+      .selectAll<SVGGElement, ApiGraphNode>("g")
+      .data(simulationNodes as ApiGraphNode[], (node: ApiGraphNode) => node.id)
       .join("g")
       .attr("class", "graph-node cursor-pointer select-none");
 
@@ -478,12 +477,12 @@ export default function Home() {
     };
 
     const simulation = d3
-      .forceSimulation(simulationNodes)
+      .forceSimulation(simulationNodes as any)
       .force(
         "link",
         d3
-          .forceLink(simulationLinks)
-          .id((node: ApiGraphNode) => node.id)
+          .forceLink(simulationLinks as any)
+          .id((node: any) => node.id)
           .distance((link: any) => {
             const sim = link.similarity ?? 0;
             const normalized = (sim - minSim) / simRange;
@@ -502,7 +501,7 @@ export default function Home() {
       )
       .force("collision", d3.forceCollide().radius(42));
 
-    let tooltip = d3.select("body").select(".graph-tooltip");
+    let tooltip = d3.select("body").select(".graph-tooltip") as any;
     if (tooltip.empty()) {
       tooltip = d3.select("body")
         .append("div")
@@ -553,7 +552,7 @@ export default function Home() {
         handleNodeMouseUp();
       });
 
-    nodeSelection.call(dragBehavior)
+    nodeSelection.call(dragBehavior as any)
       .on("mouseenter", function (event: MouseEvent, node: ApiGraphNode) {
         if (focusedNodeId) return;
         const sim = bestSimilarity.get(node.id);
@@ -614,7 +613,7 @@ export default function Home() {
     const svg = d3.select(svgRef.current);
     const isFocusActive = !!focusedNodeId;
 
-    const isLinkConnectedToSelected = (link: ApiGraphLink) => {
+    const isLinkConnectedToSelected = (link: any) => {
       if (!selectedNodeId) return false;
       const s = toNodeId(link.source);
       const t = toNodeId(link.target);
@@ -636,7 +635,7 @@ export default function Home() {
     svg.selectAll("g.graph-node")
       .transition()
       .duration(300)
-      .style("opacity", (node: ApiGraphNode) => {
+      .style("opacity", (node: any) => {
         if (!isFocusActive) return 1;
         return isConnected(node.id) ? 1 : 0.1;
       })
@@ -644,10 +643,10 @@ export default function Home() {
       .transition()
       .duration(300)
       .ease(d3.easeQuadOut)
-      .attr("stroke", (node: ApiGraphNode) =>
+      .attr("stroke", (node: any) =>
         node.id === selectedNodeId ? "#f472b6" : "none"
       )
-      .style("filter", (node: ApiGraphNode) =>
+      .style("filter", (node: any) =>
         node.id === selectedNodeId
           ? "drop-shadow(0 0 8px rgba(244, 114, 182, 0.7))"
           : "none"
@@ -656,7 +655,7 @@ export default function Home() {
     svg.selectAll("g.zoom-container line")
       .transition()
       .duration(300)
-      .style("opacity", (link: ApiGraphLink) => {
+      .style("opacity", (link: any) => {
         if (isFocusActive) {
           const s = toNodeId(link.source);
           const t = toNodeId(link.target);
@@ -666,7 +665,7 @@ export default function Home() {
         if (selectedNodeId) return 0.15;
         return 0.6;
       })
-      .attr("stroke", (link: ApiGraphLink) => {
+      .attr("stroke", (link: any) => {
         if (isFocusActive) {
           const s = toNodeId(link.source);
           const t = toNodeId(link.target);
@@ -675,7 +674,7 @@ export default function Home() {
         if (selectedNodeId && isLinkConnectedToSelected(link)) return "#a855f7";
         return "#404040";
       })
-      .attr("stroke-width", (link: ApiGraphLink) => {
+      .attr("stroke-width", (link: any) => {
         if (isFocusActive) {
           const s = toNodeId(link.source);
           const t = toNodeId(link.target);
