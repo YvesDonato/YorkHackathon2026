@@ -131,6 +131,7 @@ export default function Home() {
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null); // For 2D
   const [viewingPdfId, setViewingPdfId] = useState<string | null>(null);
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
+  const [isMobileDetailsOpen, setIsMobileDetailsOpen] = useState(false);
   const [pdfPanelSize, setPdfPanelSize] = useState<PdfPanelSize>(
     DEFAULT_PDF_PANEL_SIZE,
   );
@@ -642,11 +643,29 @@ export default function Home() {
   const handleNodeSelect = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId);
     setViewingPdfId(null);
+    setIsMobileDetailsOpen(!!nodeId);
   }, []);
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
     setViewingPdfId(null);
+    setIsMobileDetailsOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedNodeId) {
+      setIsMobileDetailsOpen(false);
+    }
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    if (viewingPdfId) {
+      setIsMobileDetailsOpen(false);
+    }
+  }, [viewingPdfId]);
+
+  const closeMobileDetailsPopup = useCallback(() => {
+    setIsMobileDetailsOpen(false);
   }, []);
 
   const handleExpandNode = useCallback(
@@ -1126,6 +1145,203 @@ export default function Home() {
 
   if (!isAuthenticated) return null;
 
+  const paperDetailsBody = selectedNode ? (
+    <div key={selectedNode.id} className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="badge badge-secondary font-mono text-[10px] px-2 py-0.5">
+          {selectedNode.id}
+        </span>
+        <a
+          href={`https://arxiv.org/abs/${selectedNode.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] font-medium text-[var(--accent-primary)] hover:text-[#f472b6] flex items-center gap-1 transition-colors"
+        >
+          View on arXiv
+          <svg
+            className="w-3 h-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
+          </svg>
+        </a>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-bold text-[var(--text-primary)] leading-snug mb-2">
+          {selectedNode.label}
+        </h3>
+
+        <div className="text-xs text-[var(--text-secondary)] leading-relaxed max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+          {selectedNode.content ? (
+            <p>{selectedNode.content}</p>
+          ) : (
+            <p className="italic text-[var(--text-tertiary)]">
+              No abstract available.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="pt-3 border-t border-[var(--border-secondary)] space-y-2">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="text-[var(--text-tertiary)]">Connections</span>
+          <span className="font-medium text-[var(--text-secondary)]">
+            {hasOutgoingLinks(selectedNode.id) ? "Has Citations" : "Leaf Node"}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2 space-y-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            onClick={() => setViewingPdfId(selectedNode.id)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/15 px-3 py-2 text-xs font-semibold text-[var(--accent-primary)] transition-all duration-300 hover:bg-[var(--accent-primary)]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]/50"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+              />
+            </svg>
+            View Paper
+          </button>
+
+          {currentSessionId && (
+            <button
+              onClick={() => handleExpandNode(selectedNode.id)}
+              disabled={expandingNodeId === selectedNode.id}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-300 transition-all duration-300 hover:bg-amber-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {expandingNodeId === selectedNode.id ? (
+                <>
+                  <svg
+                    className="animate-spin w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Expanding...
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Expand
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        <div className="rounded-xl border border-[var(--border-secondary)] bg-[var(--bg-secondary)]/45 p-3">
+          <SummaryAudioPlayer
+            summary={selectedNode.content ?? ""}
+            variant="dark"
+          />
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+      <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center">
+        <svg
+          className="w-6 h-6 text-[var(--text-tertiary)] opacity-50"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"
+          />
+        </svg>
+      </div>
+      <div>
+        <p className="text-xs font-medium text-[var(--text-secondary)]">
+          No paper selected
+        </p>
+        <p className="text-[10px] text-[var(--text-tertiary)] mt-1">
+          Click a node to view details
+        </p>
+      </div>
+    </div>
+  );
+
+  const rendererToggleButtons = (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setRendererNotice(null);
+          setRendererMode("2d");
+        }}
+        className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+          activeRenderer === "2d"
+            ? "bg-[var(--accent-primary)]/20 text-white"
+            : "text-[var(--text-secondary)] hover:bg-white/10"
+        }`}
+      >
+        2D
+      </button>
+      {ENABLE_3D_EXPERIMENTAL && (
+        <button
+          type="button"
+          onClick={() => {
+            setRendererNotice(null);
+            setRendererMode("3d");
+          }}
+          className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+            activeRenderer === "3d"
+              ? "bg-[var(--accent-primary)]/20 text-white"
+              : "text-[var(--text-secondary)] hover:bg-white/10"
+          }`}
+        >
+          3D (Experimental)
+        </button>
+      )}
+    </>
+  );
+
   return (
     <>
       {/* GRAPH LAYER (Fixed Background) */}
@@ -1219,9 +1435,9 @@ export default function Home() {
         {/* TOP ROW */}
         <div className="flex flex-wrap items-start justify-between gap-6">
           {/* LEFT: Branding & Sessions */}
-          <div className="pointer-events-auto flex flex-col gap-4 max-w-sm">
+          <div className="pointer-events-auto order-2 flex w-full max-w-none flex-col gap-4 lg:order-none lg:w-auto lg:max-w-sm">
             {/* Logo */}
-            <a href="/" className="glass-card flex items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
+            <a href="/" className="hidden lg:flex glass-card items-center gap-3 rounded-2xl border border-white/10 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
               <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-gradient-to-br from-[#a855f7]/20 to-[#ec4899]/20 shadow-lg ring-1 ring-white/20">
                 <Image
                   src="/prismarinelogo.png"
@@ -1339,7 +1555,7 @@ export default function Home() {
           </div>
 
           {/* CENTER: Search Bar */}
-          <div className="pointer-events-auto flex-1 max-w-xl">
+          <div className="pointer-events-auto order-1 w-full max-w-none lg:order-none lg:flex-1 lg:max-w-xl">
             <form
               className="glass-card flex flex-wrap items-center gap-2 rounded-xl border border-white/10 p-2 shadow-2xl backdrop-blur-xl transition-colors focus-within:border-[var(--accent-primary)] sm:flex-nowrap sm:p-1.5 sm:pl-4"
               onSubmit={handleSeedSubmit}
@@ -1394,39 +1610,10 @@ export default function Home() {
           </div>
 
           {/* RIGHT: Stats & Details / PDF Viewer / 3D Toggle */}
-          <div className="flex flex-col gap-4 items-end pointer-events-auto w-80">
+          <div className="pointer-events-auto order-3 flex w-full flex-col items-end gap-4 lg:order-none lg:w-80">
             {/* View Mode Toggle */}
-            <div className="glass-card p-1 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setRendererNotice(null);
-                  setRendererMode("2d");
-                }}
-                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
-                  activeRenderer === "2d"
-                    ? "bg-[var(--accent-primary)]/20 text-white"
-                    : "text-[var(--text-secondary)] hover:bg-white/10"
-                }`}
-              >
-                2D
-              </button>
-              {ENABLE_3D_EXPERIMENTAL && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRendererNotice(null);
-                    setRendererMode("3d");
-                  }}
-                  className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
-                    activeRenderer === "3d"
-                      ? "bg-[var(--accent-primary)]/20 text-white"
-                      : "text-[var(--text-secondary)] hover:bg-white/10"
-                  }`}
-                >
-                  3D (Experimental)
-                </button>
-              )}
+            <div className="hidden lg:flex glass-card items-center gap-1 rounded-lg border border-white/10 p-1 shadow-lg backdrop-blur-md">
+              {rendererToggleButtons}
             </div>
 
             {rendererNotice && (
@@ -1556,7 +1743,7 @@ export default function Home() {
                 />
               </aside>
             ) : !viewingPdfId ? (
-              <aside className="glass-card p-5 rounded-2xl border border-white/10 shadow-2xl w-full max-h-[calc(100vh-8rem)] overflow-y-auto backdrop-blur-xl bg-[#0a0a0a]/80 animate-slide-up">
+              <aside className="hidden lg:block glass-card p-5 rounded-2xl border border-white/10 shadow-2xl w-full max-h-[calc(100vh-8rem)] overflow-y-auto backdrop-blur-xl bg-[#0a0a0a]/80 animate-slide-up">
                 <div className="flex items-center gap-2 mb-4">
                   <svg
                     className="w-5 h-5 text-[var(--accent-primary)]"
@@ -1575,172 +1762,7 @@ export default function Home() {
                     Paper Details
                   </h2>
                 </div>
-
-                {selectedNode ? (
-                  <div key={selectedNode.id} className="space-y-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="badge badge-secondary font-mono text-[10px] px-2 py-0.5">
-                        {selectedNode.id}
-                      </span>
-                      <a
-                        href={`https://arxiv.org/abs/${selectedNode.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] font-medium text-[var(--accent-primary)] hover:text-[#f472b6] flex items-center gap-1 transition-colors"
-                      >
-                        View on arXiv
-                        <svg
-                          className="w-3 h-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                          />
-                        </svg>
-                      </a>
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] leading-snug mb-2">
-                        {selectedNode.label}
-                      </h3>
-
-                      <div className="text-xs text-[var(--text-secondary)] leading-relaxed max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                        {selectedNode.content ? (
-                          <p>{selectedNode.content}</p>
-                        ) : (
-                          <p className="italic text-[var(--text-tertiary)]">
-                            No abstract available.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-[var(--border-secondary)] space-y-2">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-[var(--text-tertiary)]">
-                          Connections
-                        </span>
-                        <span className="font-medium text-[var(--text-secondary)]">
-                          {hasOutgoingLinks(selectedNode.id)
-                            ? "Has Citations"
-                            : "Leaf Node"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 space-y-3">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <button
-                        onClick={() => setViewingPdfId(selectedNode.id)}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/15 px-3 py-2 text-xs font-semibold text-[var(--accent-primary)] transition-all duration-300 hover:bg-[var(--accent-primary)]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]/50"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                          />
-                        </svg>
-                        View Paper
-                      </button>
-
-                      {currentSessionId && (
-                        <button
-                          onClick={() => handleExpandNode(selectedNode.id)}
-                          disabled={expandingNodeId === selectedNode.id}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-300 transition-all duration-300 hover:bg-amber-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {expandingNodeId === selectedNode.id ? (
-                            <>
-                              <svg
-                                className="animate-spin w-4 h-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                ></circle>
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                              </svg>
-                              Expanding...
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 4v16m8-8H4"
-                                />
-                              </svg>
-                              Expand
-                            </>
-                          )}
-                        </button>
-                      )}
-                      </div>
-                      <div className="rounded-xl border border-[var(--border-secondary)] bg-[var(--bg-secondary)]/45 p-3">
-                        <SummaryAudioPlayer
-                          summary={selectedNode.content ?? ""}
-                          variant="dark"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center">
-                      <svg
-                        className="w-6 h-6 text-[var(--text-tertiary)] opacity-50"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-[var(--text-secondary)]">
-                        No paper selected
-                      </p>
-                      <p className="text-[10px] text-[var(--text-tertiary)] mt-1">
-                        Click a node to view details
-                      </p>
-                    </div>
-                  </div>
-                )}
+                {paperDetailsBody}
               </aside>
             ) : null}
           </div>
@@ -1749,11 +1771,11 @@ export default function Home() {
         {/* BOTTOM LEFT: Controls Help */}
         <div className="mt-auto pointer-events-auto self-start"> 
           {/* Stats Badge */}
-          <div className="glass-card flex w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
+          <div className="hidden lg:flex glass-card w-fit items-center gap-2 self-start rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-lg backdrop-blur-md lg:self-auto">
             <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
             {graphState.nodes.length} nodes · {graphState.links.length} links
           </div>
-          <div className="glass-card inline-flex items-center gap-3 mt-4 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
+          <div className="hidden lg:inline-flex glass-card items-center gap-3 mt-4 px-4 py-2 text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
             {activeRenderer === "3d" ? (
               <>
                 <div className="flex items-center gap-1.5">
@@ -1797,6 +1819,65 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <div className="fixed bottom-3 right-3 z-20 pointer-events-auto lg:hidden">
+        <div className="glass-card flex items-center gap-1 rounded-lg border border-white/10 p-1 shadow-lg backdrop-blur-md">
+          {rendererToggleButtons}
+        </div>
+      </div>
+
+      {selectedNode && !viewingPdfId && isMobileDetailsOpen && (
+        <div className="fixed inset-0 z-30 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close paper details"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={closeMobileDetailsPopup}
+          />
+          <aside className="pointer-events-auto absolute inset-x-3 bottom-3 max-h-[78vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0a]/92 p-4 shadow-2xl backdrop-blur-xl">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <svg
+                  className="w-5 h-5 text-[var(--accent-primary)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <h2 className="truncate text-base font-bold text-[var(--text-primary)]">
+                  Paper Details
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={closeMobileDetailsPopup}
+                className="rounded-lg p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            {paperDetailsBody}
+          </aside>
+        </div>
+      )}
 
       {viewingPdfId && !isPdfFullscreen && (
         <div className="fixed inset-0 z-40 pointer-events-none">
