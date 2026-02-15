@@ -187,7 +187,7 @@ export default function Home() {
   useEffect(() => {
     const token = localStorage.getItem("access_token")?.trim();
     if (!token) {
-      window.location.href = "/login";
+      window.location.href = "/";
       return;
     }
     setIsAuthenticated(true);
