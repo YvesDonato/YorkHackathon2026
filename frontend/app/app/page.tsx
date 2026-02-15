@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import Script from "next/script";
+import Script from "next/script";
 import Image from "next/image";
 import {
   createSession,
@@ -19,6 +20,12 @@ import {
   type ApiGraphNode,
   type Session,
 } from "@/lib/api";
+
+declare global {
+  interface Window {
+    d3?: any;
+  }
+}
 
 declare global {
   interface Window {
@@ -44,9 +51,11 @@ const formatError = (error: unknown): string =>
 export default function Home() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isD3Loaded, setIsD3Loaded] = useState(false);
   const [isD3Loaded, setIsD3Loaded] = useState(false);
   const [seedInput, setSeedInput] = useState(DEFAULT_SEED_LINK);
   const [graphState, setGraphState] = useState<GraphState>(createEmptyGraphState);
@@ -56,6 +65,10 @@ export default function Home() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [viewport, setViewport] = useState({ width: 900, height: 560 });
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [rootNodeId, setRootNodeId] = useState<string | null>(null);
+  const [viewingPdfId, setViewingPdfId] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ width: 900, height: 560 });
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [rootNodeId, setRootNodeId] = useState<string | null>(null);
@@ -83,6 +96,7 @@ export default function Home() {
   }, []);
 
   // Load sessions on mount
+  // Load sessions on mount
   const loadSessions = useCallback(async () => {
     try {
       const sessionList = await listSessions();
@@ -98,9 +112,13 @@ export default function Home() {
     if (!isAuthenticated) {
       return;
     }
+    if (!isAuthenticated) {
+      return;
+    }
     void loadSessions();
   }, [isAuthenticated, loadSessions]);
 
+  // Load a specific session's graph
   // Load a specific session's graph
   const loadSessionGraph = useCallback(async (sessionId: string) => {
     setIsLoadingGraph(true);
@@ -122,6 +140,7 @@ export default function Home() {
   }, []);
 
   // Create a new session
+  // Create a new session
   const createNewSession = useCallback(async (seedLink: string) => {
     const normalizedSeed = seedLink.trim();
 
@@ -140,6 +159,9 @@ export default function Home() {
       const session = await createSession({ seed_paper_link: normalizedSeed, mode: "references" });
       await loadSessions(); // Refresh session list
       await loadSessionGraph(session.id); // Load the new session's graph
+      const session = await createSession({ seed_paper_link: normalizedSeed, mode: "references" });
+      await loadSessions(); // Refresh session list
+      await loadSessionGraph(session.id); // Load the new session's graph
     } catch (error) {
       setGraphError(formatError(error));
       setGraphState(createEmptyGraphState());
@@ -148,6 +170,7 @@ export default function Home() {
     }
   }, [loadSessions, loadSessionGraph]);
 
+  // Delete a session
   // Delete a session
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
@@ -167,9 +190,20 @@ export default function Home() {
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
       setViewingPdfId(null);
+    (nodeId: string) => {
+      setSelectedNodeId(nodeId);
+      setViewingPdfId(null);
     },
     [],
   );
+
+  const handleNodeMouseDown = useCallback((nodeId: string) => {
+    setFocusedNodeId(nodeId);
+  }, []);
+
+  const handleNodeMouseUp = useCallback(() => {
+    setFocusedNodeId(null);
+  }, []);
 
   const handleNodeMouseDown = useCallback((nodeId: string) => {
     setFocusedNodeId(nodeId);
@@ -192,7 +226,14 @@ export default function Home() {
       return;
     }
 
+    if (!isAuthenticated) {
+      return;
+    }
+
     const element = containerRef.current;
+    if (!element) {
+      return;
+    }
     if (!element) {
       return;
     }
@@ -202,10 +243,18 @@ export default function Home() {
       setViewport({
         width: Math.max(320, Math.floor(rect.width)),
         height: Math.max(420, Math.floor(rect.height)),
+        width: Math.max(320, Math.floor(rect.width)),
+        height: Math.max(420, Math.floor(rect.height)),
       });
     };
 
     updateViewport();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateViewport);
+      return () => window.removeEventListener("resize", updateViewport);
+    }
+
 
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", updateViewport);
@@ -667,9 +716,18 @@ export default function Home() {
   if (!isAuthenticated) {
     return null;
   }
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <>
+      <Script
+        src="https://d3js.org/d3.v7.min.js"
+        strategy="afterInteractive"
+        onLoad={() => setIsD3Loaded(true)}
+      />
+
       <Script
         src="https://d3js.org/d3.v7.min.js"
         strategy="afterInteractive"
@@ -681,6 +739,14 @@ export default function Home() {
         ref={containerRef}
         className="fixed inset-0 z-0 bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a]"
       >
+        <svg
+          ref={svgRef}
+          className="h-full w-full"
+          role="img"
+          aria-label="Interactive force graph of arXiv papers"
+        />
+
+        {!isD3Loaded && (
         <svg
           ref={svgRef}
           className="h-full w-full"
@@ -702,6 +768,8 @@ export default function Home() {
 
         {isD3Loaded &&
           !isLoadingGraph &&
+        {isD3Loaded &&
+          !isLoadingGraph &&
           graphState.nodes.length === 0 &&
           !graphError && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -711,6 +779,7 @@ export default function Home() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
+                <p className="text-sm font-medium text-[var(--text-secondary)]">No citation data found for this paper</p>
                 <p className="text-sm font-medium text-[var(--text-secondary)]">No citation data found for this paper</p>
               </div>
             </div>
@@ -736,8 +805,18 @@ export default function Home() {
                   className="object-contain p-0.5"
                   priority
                 />
+              <div className="relative h-10 w-10 overflow-hidden rounded-lg shadow-lg">
+                <Image
+                  src="/prismarineLogo.png"
+                  alt="Prismarine logo"
+                  fill
+                  sizes="40px"
+                  className="object-contain p-0.5"
+                  priority
+                />
               </div>
               <h1 className="text-lg font-bold bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
+                Prismarine
                 Prismarine
               </h1>
             </div>
@@ -835,12 +914,57 @@ export default function Home() {
 
           {/* RIGHT: Stats & Details / PDF Viewer */}
           <div className={`flex flex-col gap-4 items-end pointer-events-auto transition-all duration-300 ${viewingPdfId ? "w-[40vw] max-w-2xl" : "w-80"}`}>
+          {/* RIGHT: Stats & Details / PDF Viewer */}
+          <div className={`flex flex-col gap-4 items-end pointer-events-auto transition-all duration-300 ${viewingPdfId ? "w-[40vw] max-w-2xl" : "w-80"}`}>
             {/* Stats Badge */}
             <div className="glass-card px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
               {graphState.nodes.length} nodes · {graphState.links.length} links
             </div>
 
+            {viewingPdfId ? (
+              /* ── PDF / HTML Viewer Panel ── */
+              <aside className="glass-card rounded-2xl border border-white/10 shadow-2xl w-full h-[calc(100vh-8rem)] backdrop-blur-xl bg-[#0a0a0a]/90 animate-slide-up flex flex-col overflow-hidden">
+                {/* Viewer Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <svg className="w-4 h-4 text-[var(--accent-primary)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    <span className="text-sm font-bold text-[var(--text-primary)] truncate">
+                      {graphState.nodes.find(n => n.id === viewingPdfId)?.label ?? viewingPdfId}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <a
+                      href={`https://arxiv.org/pdf/${viewingPdfId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--accent-primary)] flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-white/5"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      Open PDF
+                    </a>
+                    <button
+                      onClick={() => setViewingPdfId(null)}
+                      className="p-1.5 hover:bg-white/10 rounded-lg text-[var(--text-secondary)] hover:text-white transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {/* Iframe: arXiv PDF viewer */}
+                <iframe
+                  src={`https://arxiv.org/pdf/${viewingPdfId}`}
+                  className="flex-1 w-full bg-white rounded-b-2xl"
+                  title={`Paper ${viewingPdfId}`}
+                />
+              </aside>
+            ) : (
             {viewingPdfId ? (
               /* ── PDF / HTML Viewer Panel ── */
               <aside className="glass-card rounded-2xl border border-white/10 shadow-2xl w-full h-[calc(100vh-8rem)] backdrop-blur-xl bg-[#0a0a0a]/90 animate-slide-up flex flex-col overflow-hidden">
@@ -945,6 +1069,16 @@ export default function Home() {
                     </svg>
                     View Paper
                   </button>
+
+                  <button
+                    onClick={() => setViewingPdfId(selectedNode.id)}
+                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent-primary)]/20 hover:bg-[var(--accent-primary)]/30 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] text-xs font-semibold transition-all hover:scale-[1.02]"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                    View Paper
+                  </button>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
@@ -959,11 +1093,13 @@ export default function Home() {
                     </p>
                     <p className="text-[10px] text-[var(--text-tertiary)] mt-1">
                       Click a node or hold to focus
+                      Click a node or hold to focus
                     </p>
                   </div>
                 </div>
               )}
             </aside>
+            )}
             )}
           </div>
 
@@ -975,15 +1111,18 @@ export default function Home() {
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
               Scroll to zoom
+              Scroll to zoom
             </div>
             <div className="w-px h-3 bg-white/10"></div>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
               Drag to pan
+              Drag to pan
             </div>
             <div className="w-px h-3 bg-white/10"></div>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+              Hold to focus
               Hold to focus
             </div>
           </div>
