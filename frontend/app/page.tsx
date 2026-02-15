@@ -1,42 +1,72 @@
-import Link from "next/link";
-import Image from "next/image";
-
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] px-6 py-12">
-      <section className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col items-center justify-center text-center">
-        <div className="relative mb-6 h-16 w-16">
-          <Image
-            src="/prismarinelogo.png"
-            alt="Prismarine logo"
-            fill
-            sizes="64px"
-            className="object-contain"
-            priority
-          />
-        </div>
-        <h1 className="text-4xl font-bold tracking-tight">Prismarine</h1>
-        <p className="mt-4 max-w-xl text-base text-[var(--text-secondary)]">
-          Explore arXiv papers as a citation network. Start with one paper and
-          expand related research in a simple interactive graph.
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+        background: "#0a0a0a",
+        color: "#f5f5f5",
+        fontFamily:
+          "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      }}
+    >
+      <section
+        style={{
+          width: "100%",
+          maxWidth: "560px",
+          textAlign: "center",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "12px",
+          padding: "32px 24px",
+          background: "rgba(255,255,255,0.03)",
+        }}
+      >
+        <h1 style={{ margin: 0, fontSize: "2rem", fontWeight: 700 }}>
+          Prismarine
+        </h1>
+        <p style={{ marginTop: "12px", color: "#c4b5fd" }}>
+          Explore arXiv papers through a simple citation graph.
         </p>
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link
+        <div
+          style={{
+            marginTop: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <a
             href="/login"
-            className="inline-flex min-w-[150px] items-center justify-center rounded-md bg-[var(--accent-primary)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--accent-primary-hover)]"
+            style={{
+              display: "inline-block",
+              textDecoration: "none",
+              background: "#a855f7",
+              color: "#ffffff",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              fontWeight: 600,
+            }}
           >
             Log In
-          </Link>
-          <Link
+          </a>
+          <a
             href="/signup"
-            className="inline-flex min-w-[150px] items-center justify-center rounded-md border border-[var(--border-primary)] px-5 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
+            style={{
+              display: "inline-block",
+              textDecoration: "none",
+              border: "1px solid #404040",
+              color: "#f5f5f5",
+              padding: "10px 16px",
+              borderRadius: "8px",
+              fontWeight: 600,
+            }}
           >
             Sign Up
-          </Link>
+          </a>
         </div>
-        <p className="mt-6 text-xs text-[var(--text-tertiary)]">
-          No session required to view this page.
-        </p>
       </section>
     </main>
   );
