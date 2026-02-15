@@ -10,7 +10,6 @@ import {
 } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import SpriteText from "three-spritetext";
 import {
   createSession,
   listSessions,
@@ -20,12 +19,8 @@ import {
   type ApiGraphNode,
   type Session,
 } from "@/lib/api";
+import GraphRenderer2D from "@/app/components/GraphRenderer2D";
 import GraphErrorBoundary from "@/app/components/GraphErrorBoundary";
-
-const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
-  ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full text-white/50">Loading 3D Engine...</div>
-});
 
 type GraphState = {
   nodes: ApiGraphNode[];
@@ -33,6 +28,20 @@ type GraphState = {
 };
 
 const DEFAULT_SEED_LINK = "1706.03762";
+const RENDERER_MODE_STORAGE_KEY = "prismarine_renderer_mode";
+const ENABLE_3D_EXPERIMENTAL =
+  process.env.NEXT_PUBLIC_ENABLE_3D_EXPERIMENTAL === "true";
+
+type RendererMode = "2d" | "3d";
+
+const GraphRenderer3D = dynamic(() => import("@/app/components/GraphRenderer3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-white/50">
+      Loading 3D Engine...
+    </div>
+  ),
+});
 
 const createEmptyGraphState = (): GraphState => ({ nodes: [], links: [] });
 
@@ -44,7 +53,6 @@ const formatError = (error: unknown): string =>
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const fgRef = useRef<any>(null);
 
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -59,6 +67,8 @@ export default function Home() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [rendererMode, setRendererMode] = useState<RendererMode>("2d");
+  const [rendererNotice, setRendererNotice] = useState<string | null>(null);
 
   const selectedNode = useMemo(
     () => graphState.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -116,25 +126,6 @@ export default function Home() {
     }
   }, []);
 
-  // Update force layout distance when graph changes
-  useEffect(() => {
-    if (fgRef.current) {
-      // Configure d3 force link distance
-      fgRef.current.d3Force('link').distance((link: any) => {
-        // High similarity (near 1.0) -> Short distance (e.g. 30)
-        // Low similarity (near 0.0) -> Long distance (e.g. 180)
-        const sim = link.similarity ?? 0.0;
-        return 180 - (sim * 150);
-      });
-
-      // Increase charge strength to spread out unconnected components
-      // fgRef.current.d3Force('charge').strength(-200);
-
-      // Re-heat simulation
-      fgRef.current.d3ReheatSimulation();
-    }
-  }, [graphState]);
-
   const createNewSession = useCallback(async (seedLink: string) => {
     const normalizedSeed = seedLink.trim();
 
@@ -175,24 +166,9 @@ export default function Home() {
     }
   }, [currentSessionId, loadSessions]);
 
-  const handleNodeClick = useCallback(
-    (node: any) => {
-      setSelectedNodeId(node.id);
-
-      if (fgRef.current) {
-        // Aim at node from distance
-        const distance = 120;
-        const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-
-        fgRef.current.cameraPosition(
-          { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new position
-          node, // lookAt ({ x, y, z })
-          2000  // ms transition duration
-        );
-      }
-    },
-    [],
-  );
+  const handleNodeSelect = useCallback((nodeId: string | null) => {
+    setSelectedNodeId(nodeId);
+  }, []);
 
   const handleSeedSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -221,6 +197,40 @@ export default function Home() {
     return () => observer.disconnect();
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let nextMode: RendererMode = "2d";
+
+    if (ENABLE_3D_EXPERIMENTAL) {
+      const queryMode = new URLSearchParams(window.location.search).get("renderer");
+      const savedMode = localStorage.getItem(RENDERER_MODE_STORAGE_KEY);
+      if (queryMode === "3d" || savedMode === "3d") {
+        nextMode = "3d";
+      }
+    }
+
+    setRendererMode(nextMode);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (rendererMode === "3d" && !ENABLE_3D_EXPERIMENTAL) {
+      setRendererMode("2d");
+      return;
+    }
+    localStorage.setItem(RENDERER_MODE_STORAGE_KEY, rendererMode);
+  }, [rendererMode]);
+
+  const handle3DRuntimeError = useCallback((error: Error) => {
+    console.error("3D renderer failed, falling back to 2D:", error);
+    setRendererNotice("3D renderer failed. Switched to 2D renderer.");
+    setRendererMode("2d");
+  }, []);
+
+  const activeRenderer: RendererMode =
+    rendererMode === "3d" && ENABLE_3D_EXPERIMENTAL ? "3d" : "2d";
+
   if (isAuthChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
@@ -239,53 +249,32 @@ export default function Home() {
         className="fixed inset-0 z-0 bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a]"
       >
         {viewport.width > 0 && (
-          <GraphErrorBoundary>
-            <ForceGraph3D
-              ref={fgRef}
+          activeRenderer === "3d" ? (
+            <GraphErrorBoundary onError={(error) => handle3DRuntimeError(error)}>
+              <GraphRenderer3D
+                width={viewport.width}
+                height={viewport.height}
+                graphState={graphState}
+                rootNodeId={rootNodeId}
+                selectedNodeId={selectedNodeId}
+                hoveredNodeId={hoveredNodeId}
+                onHoverNodeIdChange={setHoveredNodeId}
+                onSelectNodeId={handleNodeSelect}
+                onRuntimeError={handle3DRuntimeError}
+              />
+            </GraphErrorBoundary>
+          ) : (
+            <GraphRenderer2D
               width={viewport.width}
               height={viewport.height}
-              graphData={graphState}
-              backgroundColor="rgba(0,0,0,0)"
-              nodeLabel="label"
-              nodeColor={(node: any) => {
-                const isRoot = node.id === rootNodeId;
-                const isHighlighted = node.id === hoveredNodeId || node.id === selectedNodeId;
-
-                if (isRoot) {
-                  return isHighlighted ? "#f9a8d4" : "#ec4899"; // Pink-300 : Pink-500
-                }
-                return isHighlighted ? "#d8b4fe" : "#a855f7"; // Purple-300 : Purple-500
-              }}
-              onNodeHover={(node: any) => setHoveredNodeId(node ? node.id : null)}
-              nodeRelSize={6}
-              nodeThreeObjectExtend={true}
-              nodeThreeObject={(node: any) => {
-                const sprite = new SpriteText(node.label);
-                sprite.material.depthWrite = false; // Prevent occlusion issues
-                sprite.color = node.id === selectedNodeId ? "#fff" : "rgba(255, 255, 255, 0.8)";
-                sprite.textHeight = node.id === selectedNodeId ? 6 : 4;
-                sprite.center.y = 0; // Center vertically on node
-                sprite.position.y = 12; // Offset above the node
-                return sprite;
-              }}
-              linkColor={(link: any) => {
-                const s = toNodeId(link.source);
-                const t = toNodeId(link.target);
-                if (s === selectedNodeId || t === selectedNodeId) return "rgba(168, 85, 247, 0.8)";
-                return "rgba(255,255,255,0.2)";
-              }}
-              linkWidth={(link: any) => {
-                const s = toNodeId(link.source);
-                const t = toNodeId(link.target);
-                return s === selectedNodeId || t === selectedNodeId ? 2 : 0.5;
-              }}
-              linkOpacity={0.3}
-              linkLabel={(link: any) => `Similarity: ${(link.similarity * 100).toFixed(0)}%`}
-              onNodeClick={handleNodeClick}
-              onBackgroundClick={() => setSelectedNodeId(null)}
-              controlType="orbit"
+              graphState={graphState}
+              rootNodeId={rootNodeId}
+              selectedNodeId={selectedNodeId}
+              hoveredNodeId={hoveredNodeId}
+              onHoverNodeIdChange={setHoveredNodeId}
+              onSelectNodeId={handleNodeSelect}
             />
-          </GraphErrorBoundary>
+          )
         )}
 
         {isLoadingGraph && (
@@ -434,6 +423,45 @@ export default function Home() {
 
           {/* RIGHT: Stats & Details */}
           <div className="flex flex-col gap-4 items-end pointer-events-auto w-80">
+            <div className="glass-card p-1 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setRendererNotice(null);
+                  setRendererMode("2d");
+                }}
+                className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+                  activeRenderer === "2d"
+                    ? "bg-[var(--accent-primary)]/20 text-white"
+                    : "text-[var(--text-secondary)] hover:bg-white/10"
+                }`}
+              >
+                2D
+              </button>
+              {ENABLE_3D_EXPERIMENTAL && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRendererNotice(null);
+                    setRendererMode("3d");
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+                    activeRenderer === "3d"
+                      ? "bg-[var(--accent-primary)]/20 text-white"
+                      : "text-[var(--text-secondary)] hover:bg-white/10"
+                  }`}
+                >
+                  3D (Experimental)
+                </button>
+              )}
+            </div>
+
+            {rendererNotice && (
+              <div className="glass-card px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 text-[11px] font-medium">
+                {rendererNotice}
+              </div>
+            )}
+
             {/* Stats Badge */}
             <div className="glass-card px-3 py-1.5 rounded-lg border border-white/10 backdrop-blur-md shadow-lg flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
@@ -518,20 +546,36 @@ export default function Home() {
         {/* BOTTOM LEFT: Controls Help */}
         <div className="mt-auto pointer-events-auto self-start">
           <div className="glass-card inline-flex items-center gap-3 px-4 py-2 rounded-full text-[10px] font-medium text-[var(--text-secondary)] border border-white/10 shadow-lg backdrop-blur-xl bg-[#0a0a0a]/60">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Left click to rotate
-            </div>
-            <div className="w-px h-3 bg-white/10"></div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Scroll to zoom
-            </div>
-            <div className="w-px h-3 bg-white/10"></div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
-              Click node to fly
-            </div>
+            {activeRenderer === "3d" ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Left click to rotate
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Scroll to zoom
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Click node to fly
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Hover nodes to inspect graph
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]"></span>
+                  Click node to open details
+                </div>
+              </>
+            )}
           </div>
         </div>
 
