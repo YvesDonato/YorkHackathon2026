@@ -2,6 +2,7 @@ import os
 import re
 import logging
 
+import httpx
 from google import genai
 from google.genai import types
 from fastapi import HTTPException
@@ -15,6 +16,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIMENSIONS = 768
 GROUNDING_MODEL = "gemini-2.5-flash-lite"
+PMC_API_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+PMC_ID_PATTERN = re.compile(r'PMC\d+', re.IGNORECASE)
 
 # Initialize Gemini client
 genai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
@@ -153,3 +156,101 @@ async def find_similar_papers_via_search(
 
     logger.info("Google Search grounding found %d related papers", len(results))
     return results
+
+
+# ---------------------------------------------------------------------------
+# PMC paper search
+# ---------------------------------------------------------------------------
+
+async def find_similar_pmc_papers(
+    pmc_id: str,
+    max_results: int = 8,
+) -> list[dict]:
+    """Search for similar PMC papers using NCBI E-utilities elink (related articles).
+    
+    Returns a list of dicts with keys: ``pmc_id``, ``title``.
+    """
+    # Extract numeric ID from PMC12345 format
+    numeric_id = pmc_id.replace("PMC", "").replace("pmc", "")
+    
+    # Use elink to find related papers in PMC
+    elink_url = f"{PMC_API_BASE}/elink.fcgi"
+    elink_params = {
+        "dbfrom": "pmc",
+        "db": "pmc",
+        "id": numeric_id,
+        "retmode": "json",
+        "cmd": "neighbor_score"  # Get related articles with scores
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(elink_url, params=elink_params)
+        response.raise_for_status()
+        
+        data = response.json()
+        logger.info(f"PMC elink response for {pmc_id}: {data}")
+        linksets = data.get("linksets", [])
+        
+        if not linksets:
+            logger.info("No linksets found for PMC paper")
+            return []
+        
+        # Extract related paper IDs
+        related_ids = []
+        for linkset in linksets:
+            link_set_dbs = linkset.get("linksetdbs", [])
+            for link_db in link_set_dbs:
+                links = link_db.get("links", [])
+                # Each link is a dict with 'id' and 'score' keys
+                for link in links[:max_results + 5]:
+                    if isinstance(link, dict):
+                        related_ids.append(link.get("id"))
+                    else:
+                        related_ids.append(link)
+
+        logger.info(f"Found {len(related_ids)} related PMC IDs before filtering")
+        
+        if not related_ids:
+            logger.info("No similar PMC papers found via elink")
+            return []
+
+        # Remove the original paper ID from results
+        related_ids = [rid for rid in related_ids if str(rid) != numeric_id][:max_results]
+
+        if not related_ids:
+            logger.info("No similar PMC papers after filtering")
+            return []
+
+        # Fetch details for these papers using esummary
+        summary_url = f"{PMC_API_BASE}/esummary.fcgi"
+        summary_params = {
+            "db": "pmc",
+            "id": ",".join(str(rid) for rid in related_ids),
+            "retmode": "json"
+        }
+        
+        async with httpx.AsyncClient(timeout=15) as client:
+            summary_response = await client.get(summary_url, params=summary_params)
+        summary_response.raise_for_status()
+        
+        summary_data = summary_response.json()
+        result_dict = summary_data.get("result", {})
+        
+        results = []
+        for pmc_numeric_id in related_ids:
+            paper_data = result_dict.get(str(pmc_numeric_id))
+            if paper_data and isinstance(paper_data, dict):
+                paper_title = paper_data.get("title", "")
+                result_pmc_id = f"PMC{pmc_numeric_id}"
+                results.append({
+                    "pmc_id": result_pmc_id,
+                    "title": paper_title
+                })
+        
+        logger.info("Found %d similar PMC papers", len(results))
+        return results
+        
+    except Exception as exc:
+        logger.warning("PMC search request failed: %s", exc)
+        return []

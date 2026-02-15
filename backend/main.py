@@ -1,4 +1,5 @@
 import os
+import re
 import xml.etree.ElementTree as ET
 import logging
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from database import close_db, connect_db, get_db
 from papers import (
     cosine_similarity,
     find_similar_papers_via_search,
+    find_similar_pmc_papers,
     generate_embedding,
     generate_embeddings_batch,
 )
@@ -31,10 +33,12 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
-app = FastAPI(title="arXiv Paper API", lifespan=lifespan)
+app = FastAPI(title="Research Paper API", lifespan=lifespan)
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 SEMANTIC_SCHOLAR_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
+PMC_API_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+PMC_ID_PATTERN = re.compile(r'PMC\d+', re.IGNORECASE)
 
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 RAW_FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
@@ -114,6 +118,67 @@ def normalize_whitespace(value: str) -> str:
     return " ".join(value.split())
 
 
+async def fetch_pmc_paper(paper_id: str) -> dict[str, Any] | None:
+    """Fetch PMC paper metadata using NCBI E-utilities."""
+    # Extract numeric ID from PMC12345 format
+    numeric_id = paper_id.replace("PMC", "").replace("pmc", "")
+    
+    # Use esummary to get paper details
+    url = f"{PMC_API_BASE}/esummary.fcgi"
+    params = {
+        "db": "pmc",
+        "id": numeric_id,
+        "retmode": "json"
+    }
+    
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.get(url, params=params)
+    response.raise_for_status()
+    
+    data = response.json()
+    result = data.get("result", {}).get(numeric_id)
+    
+    if not result:
+        return None
+    
+    # Extract metadata
+    title = result.get("title", "")
+    authors_list = result.get("authors", [])
+    authors = [a.get("name", "") for a in authors_list if isinstance(a, dict)]
+    
+    # Get publication date
+    pub_date = result.get("pubdate", "")
+    
+    # Get abstract using efetch
+    fetch_url = f"{PMC_API_BASE}/efetch.fcgi"
+    fetch_params = {
+        "db": "pmc",
+        "id": numeric_id,
+        "retmode": "xml"
+    }
+    
+    summary = ""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            fetch_response = await client.get(fetch_url, params=fetch_params)
+        if fetch_response.status_code == 200:
+            root = ET.fromstring(fetch_response.text)
+            # Try to find abstract
+            abstract_elem = root.find(".//abstract")
+            if abstract_elem is not None:
+                summary = " ".join(abstract_elem.itertext()).strip()
+    except Exception as e:
+        logger.warning(f"Failed to fetch PMC abstract: {e}")
+    
+    return {
+        "title": normalize_whitespace(title),
+        "url": f"https://www.ncbi.nlm.nih.gov/pmc/articles/{paper_id}/",
+        "published": normalize_whitespace(pub_date),
+        "authors": [normalize_whitespace(a) for a in authors],
+        "summary": normalize_whitespace(summary),
+    }
+
+
 async def fetch_arxiv_paper(paper_id: str) -> dict[str, Any] | None:
     params = {"id_list": paper_id}
     async with httpx.AsyncClient(timeout=15) as client:
@@ -184,7 +249,13 @@ async def fetch_arxiv_papers_batch(paper_ids: list[str]) -> dict[str, dict[str, 
 
 
 def extract_paper_id(link: str) -> str:
-    """Extract paper ID from an arXiv link or raw ID."""
+    """Extract paper ID from an arXiv or PMC link or raw ID."""
+    # Check for PMC first
+    pmc_match = PMC_ID_PATTERN.search(link)
+    if pmc_match:
+        return pmc_match.group(0).upper()  # Return PMC12345 format
+    
+    # arXiv handling
     if "/abs/" in link:
         return link.split("/abs/")[-1].rstrip("/")
     if "/pdf/" in link:
@@ -194,6 +265,10 @@ def extract_paper_id(link: str) -> str:
 
 def canonicalize_paper_id(value: str) -> str:
     paper_id = extract_paper_id(value.strip())
+
+    # If it's a PMC ID, return it as is
+    if paper_id.upper().startswith("PMC"):
+        return paper_id.upper()
 
     if paper_id.lower().startswith("arxiv:"):
         paper_id = paper_id.split(":", maxsplit=1)[1]
@@ -340,8 +415,14 @@ async def _generate_graph_internal(
     if mode not in ("grounding", "references"):
         raise HTTPException(status_code=422, detail="mode must be 'grounding' or 'references'")
 
+    # Detect if this is a PMC or arXiv paper
+    is_pmc = paper_id.upper().startswith("PMC")
+
     try:
-        seed_paper = await fetch_arxiv_paper(paper_id)
+        if is_pmc:
+            seed_paper = await fetch_pmc_paper(paper_id)
+        else:
+            seed_paper = await fetch_arxiv_paper(paper_id)
     except (httpx.HTTPError, ET.ParseError) as exc:
         raise HTTPException(status_code=502, detail=f"Failed to fetch seed paper: {exc}")
 
@@ -355,56 +436,105 @@ async def _generate_graph_internal(
     discovery_error: str | None = None
 
     if mode == "grounding":
-        # Google Search grounding
+        # Google Search grounding or PMC search based on paper type
         seed_title = seed_paper.get("title", "")
         seed_summary = seed_paper.get("summary", "")
 
         discovered: list[dict] = []
         try:
-            discovered = await find_similar_papers_via_search(seed_title, seed_summary)
-        except Exception as exc:
-            discovery_error = f"Google Search grounding failed: {exc}"
-
-        # Batch-fetch arXiv metadata for discovered paper IDs
-        discovered_ids = [d["arxiv_id"] for d in discovered]
-        discovered_meta: dict[str, dict[str, Any]] = {}
-        if discovered_ids:
-            try:
-                discovered_meta = await fetch_arxiv_papers_batch(discovered_ids)
-            except (httpx.HTTPError, ET.ParseError):
-                discovered_meta = {}
-
-        for disc in discovered:
-            aid = disc["arxiv_id"]
-            if aid in seen_node_ids or aid == root_node.id:
-                continue
-
-            meta = discovered_meta.get(aid)
-            if meta:
-                title = normalize_whitespace(str(meta.get("title", "")).strip()) or aid
-                summary = normalize_whitespace(str(meta.get("summary", "")).strip())
-                published = normalize_whitespace(str(meta.get("published", "")).strip()) or None
-                url = normalize_whitespace(str(meta.get("url", "")).strip()) or f"https://arxiv.org/abs/{aid}"
-                authors_raw = meta.get("authors") or []
-                authors = [normalize_whitespace(str(a)) for a in authors_raw if str(a).strip()]
+            if is_pmc:
+                # Search for similar PMC papers using elink
+                logger.info(f"Searching for similar PMC papers to {paper_id}")
+                discovered = await find_similar_pmc_papers(paper_id)
+                logger.info(f"PMC search returned {len(discovered)} papers")
             else:
-                title = disc.get("title", aid)
-                summary = ""
-                published = None
-                url = f"https://arxiv.org/abs/{aid}"
-                authors = []
+                # Search for similar arXiv papers
+                discovered = await find_similar_papers_via_search(seed_title, seed_summary)
+        except Exception as exc:
+            logger.error(f"Search failed for {paper_id}: {exc}", exc_info=True)
+            discovery_error = f"Search failed: {exc}"
 
-            nodes.append(GraphNode(
-                id=aid,
-                label=title,
-                content=summary or f"Related paper {aid}",
-                url=url,
-                published=published,
-                authors=authors,
-                summary=summary,
-                is_root=False,
-            ))
-            seen_node_ids.add(aid)
+        if is_pmc:
+            # Batch-fetch PMC metadata for discovered paper IDs
+            discovered_ids = [d["pmc_id"] for d in discovered]
+            
+            for disc in discovered:
+                pid = disc["pmc_id"]
+                if pid in seen_node_ids or pid == root_node.id:
+                    continue
+
+                # Fetch individual PMC paper metadata
+                try:
+                    meta = await fetch_pmc_paper(pid)
+                except Exception:
+                    meta = None
+
+                if meta:
+                    title = normalize_whitespace(str(meta.get("title", "")).strip()) or pid
+                    summary = normalize_whitespace(str(meta.get("summary", "")).strip())
+                    published = normalize_whitespace(str(meta.get("published", "")).strip()) or None
+                    url = normalize_whitespace(str(meta.get("url", "")).strip()) or f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pid}/"
+                    authors_raw = meta.get("authors") or []
+                    authors = [normalize_whitespace(str(a)) for a in authors_raw if str(a).strip()]
+                else:
+                    title = disc.get("title", pid)
+                    summary = ""
+                    published = None
+                    url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pid}/"
+                    authors = []
+
+                nodes.append(GraphNode(
+                    id=pid,
+                    label=title,
+                    content=summary or f"Related paper {pid}",
+                    url=url,
+                    published=published,
+                    authors=authors,
+                    summary=summary,
+                    is_root=False,
+                ))
+                seen_node_ids.add(pid)
+        else:
+            # Batch-fetch arXiv metadata for discovered paper IDs
+            discovered_ids = [d["arxiv_id"] for d in discovered]
+            discovered_meta: dict[str, dict[str, Any]] = {}
+            if discovered_ids:
+                try:
+                    discovered_meta = await fetch_arxiv_papers_batch(discovered_ids)
+                except (httpx.HTTPError, ET.ParseError):
+                    discovered_meta = {}
+
+            for disc in discovered:
+                aid = disc["arxiv_id"]
+                if aid in seen_node_ids or aid == root_node.id:
+                    continue
+
+                meta = discovered_meta.get(aid)
+                if meta:
+                    title = normalize_whitespace(str(meta.get("title", "")).strip()) or aid
+                    summary = normalize_whitespace(str(meta.get("summary", "")).strip())
+                    published = normalize_whitespace(str(meta.get("published", "")).strip()) or None
+                    url = normalize_whitespace(str(meta.get("url", "")).strip()) or f"https://arxiv.org/abs/{aid}"
+                    authors_raw = meta.get("authors") or []
+                    authors = [normalize_whitespace(str(a)) for a in authors_raw if str(a).strip()]
+                else:
+                    title = disc.get("title", aid)
+                    summary = ""
+                    published = None
+                    url = f"https://arxiv.org/abs/{aid}"
+                    authors = []
+
+                nodes.append(GraphNode(
+                    id=aid,
+                    label=title,
+                    content=summary or f"Related paper {aid}",
+                    url=url,
+                    published=published,
+                    authors=authors,
+                    summary=summary,
+                    is_root=False,
+                ))
+                seen_node_ids.add(aid)
 
     else:
         # Semantic Scholar references
@@ -491,21 +621,21 @@ async def _generate_graph_internal(
 
 @app.get("/graph", response_model=GraphResponse)
 async def get_graph(
-    link: str = Query(..., description="Seed arXiv paper link or ID"),
+    link: str = Query(..., description="Seed arXiv or PMC paper link or ID"),
     mode: str = Query("grounding", description="Discovery mode: 'grounding' (Google Search) or 'references' (Semantic Scholar)"),
     current_user: dict = Depends(get_current_user),
 ):
     """Return a similarity graph for a seed paper.
 
     Supports two discovery modes:
-    - **grounding**: Uses Google Search grounding via Gemini to find similar papers.
-    - **references**: Uses Semantic Scholar to fetch cited references.
+    - **grounding**: Uses Google Search grounding via Gemini for arXiv papers, or PMC E-utilities for PMC papers.
+    - **references**: Uses Semantic Scholar to fetch cited references (arXiv only).
     
     DEPRECATED: Use POST /sessions to create a session-based graph instead.
     """
     paper_id = canonicalize_paper_id(link)
     if not paper_id:
-        raise HTTPException(status_code=422, detail="A valid arXiv link or ID is required")
+        raise HTTPException(status_code=422, detail="A valid arXiv or PMC link or ID is required")
 
     graph_response, _, _ = await _generate_graph_internal(paper_id, mode)
     return graph_response
@@ -533,7 +663,7 @@ async def create_session(
     """Create a new graph exploration session."""
     paper_id = canonicalize_paper_id(session_create.seed_paper_link)
     if not paper_id:
-        raise HTTPException(status_code=422, detail="A valid arXiv link or ID is required")
+        raise HTTPException(status_code=422, detail="A valid arXiv or PMC link or ID is required")
 
     # Generate graph using internal helper
     graph_response, nodes, _ = await _generate_graph_internal(paper_id, session_create.mode)
