@@ -538,6 +538,13 @@ async def create_session(
     # Generate graph using internal helper
     graph_response, nodes, _ = await _generate_graph_internal(paper_id, session_create.mode)
 
+    # Determine session title: use provided title, or fallback to seed paper's title
+    session_title = session_create.title
+    if not session_title:
+        seed_node = next((n for n in nodes if n.id == paper_id), None)
+        if seed_node:
+            session_title = seed_node.label
+
     # Create session document
     db = get_db()
     user_id = current_user["_id"]
@@ -545,7 +552,7 @@ async def create_session(
 
     session_doc = {
         "user_id": user_id,
-        "title": session_create.title,
+        "title": session_title,
         "seed_paper_id": paper_id,
         "mode": session_create.mode,
         "created_at": now,
@@ -566,7 +573,7 @@ async def create_session(
     return SessionResponse(
         id=str(session_id),
         user_id=str(user_id),
-        title=session_create.title,
+        title=session_title,
         seed_paper_id=paper_id,
         mode=session_create.mode,
         created_at=now.isoformat(),

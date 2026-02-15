@@ -18,6 +18,7 @@ import {
   getSession,
   deleteSession as deleteSessionApi,
   expandSessionNode,
+  FASTAPI_BASE_URL,
   type ApiGraphLink,
   type ApiGraphNode,
   type Session,
@@ -29,7 +30,7 @@ type GraphState = {
   links: ApiGraphLink[];
 };
 
-const DEFAULT_SEED_LINK = "1706.03762";
+const DEFAULT_SEED_LINK = "";
 const RENDERER_MODE_STORAGE_KEY = "prismarine_renderer_mode";
 const ENABLE_3D_EXPERIMENTAL =
   process.env.NEXT_PUBLIC_ENABLE_3D_EXPERIMENTAL === "true";
@@ -193,6 +194,27 @@ export default function Home() {
       setSelectedNodeId(response.seed_id);
       setRootNodeId(response.seed_id);
       setCurrentSessionId(sessionId);
+
+      // Update session title with seed paper's title if not already set
+      const currentSession = sessions.find(s => s.id === sessionId);
+      if (currentSession && !currentSession.title) {
+        const seedNode = response.nodes.find(n => n.id === response.seed_id);
+        if (seedNode?.label) {
+          try {
+            await fetch(`${FASTAPI_BASE_URL}/sessions/${sessionId}`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${localStorage.getItem("access_token")}`
+              },
+              body: JSON.stringify({ title: seedNode.label })
+            });
+            await loadSessions();
+          } catch (err) {
+            console.error("Failed to update session title:", err);
+          }
+        }
+      }
     } catch (error) {
       setGraphError(formatError(error));
       setGraphState(createEmptyGraphState());
@@ -200,7 +222,7 @@ export default function Home() {
     } finally {
       setIsLoadingGraph(false);
     }
-  }, []);
+  }, [sessions, loadSessions]);
 
   const createNewSession = useCallback(async (seedLink: string) => {
     const normalizedSeed = seedLink.trim();
@@ -240,6 +262,15 @@ export default function Home() {
       console.error("Failed to delete session:", error);
     }
   }, [currentSessionId, loadSessions]);
+
+  // Auto-load first session
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingSessions) return;
+    if (currentSessionId) return; // Already have a session loaded
+    if (sessions.length > 0) {
+      void loadSessionGraph(sessions[0].id);
+    }
+  }, [isAuthenticated, isLoadingSessions, sessions, currentSessionId, loadSessionGraph]);
 
   const handleNodeSelect = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId);
@@ -824,7 +855,7 @@ export default function Home() {
                             e.stopPropagation();
                             void deleteSession(session.id);
                           }}
-                          className="flex-shrink-0 p-1 hover:bg-red-500/20 rounded text-red-400/60 hover:text-red-400 transition-colors"
+                          className="flex-shrink-0 p-1 cursor-pointer hover:bg-red-500/20 rounded text-red-400/60 hover:text-red-400 transition-colors"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -848,13 +879,13 @@ export default function Home() {
                 type="text"
                 value={seedInput}
                 onChange={(event) => setSeedInput(event.target.value)}
-                placeholder="Search by arXiv ID (e.g., 1706.03762)"
+                placeholder="Search by arXiv URL or ID (e.g., 1706.03762)"
                 className="bg-transparent border-none text-sm text-white placeholder-white/30 focus:ring-0 min-w-0 flex-1 basis-40 p-0"
               />
               <button
                 type="submit"
                 disabled={isLoadingGraph}
-                className="w-full rounded-lg bg-white/10 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20 disabled:opacity-50 sm:w-auto"
+                className="w-full rounded-lg bg-white/10 px-4 py-2 text-xs cursor-pointer font-semibold text-white transition-colors hover:bg-white/20 disabled:opacity-50 sm:w-auto"
               >
                 {isLoadingGraph ? "Loading..." : "Load Graph"}
               </button>
