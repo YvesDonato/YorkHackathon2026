@@ -308,5 +308,26 @@ a:hover {
   font-size: 0.875rem;
 }
 
+.summary-audio-control {
+  width: 100%;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.summary-audio-control::-webkit-media-controls-enclosure {
+  border-radius: var(--radius-lg);
+}
+
+.summary-audio-control::-webkit-media-controls-panel {
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-secondary));
+}
+
+.summary-audio-control::-webkit-media-controls-current-time-display,
+.summary-audio-control::-webkit-media-controls-time-remaining-display {
+  color: var(--text-secondary);
+}
+
 
 
