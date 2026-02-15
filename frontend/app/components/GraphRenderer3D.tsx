@@ -78,10 +78,10 @@ export default function GraphRenderer3D({
             });
 
         return {
-            root: createMaterial("#ec4899"),
-            rootHighlight: createMaterial("#f9a8d4"),
+            root: createMaterial("#d8b4fe"), // Light purple (lighter shade of #a855f7)
+            rootHighlight: createMaterial("#f5f3ff"), // Very light purple
             default: createMaterial("#a855f7"),
-            highlight: createMaterial("#d8b4fe"),
+            highlight: createMaterial("#c084fc"),
             selected: createMaterial("#f472b6"),
         };
     }, []);
@@ -115,8 +115,8 @@ export default function GraphRenderer3D({
 
                     const mesh = new THREE.Mesh(geometries.sphere, material);
 
-                    // Scale root and selected nodes
-                    const scale = isRoot ? 1.5 : isSelected ? 1.3 : 1;
+                    // Scale nodes (Uniform size for all nodes as per user request)
+                    const scale = 1;
                     mesh.scale.set(scale, scale, scale);
 
                     // 2. Create the label sprite
@@ -147,11 +147,10 @@ export default function GraphRenderer3D({
                     sprite.material.transparent = true;
                     sprite.renderOrder = 999;
                     sprite.color = "#ffffff";
-                    sprite.textHeight = isSelected ? 8 : (isRoot ? 7 : 4);
+                    sprite.textHeight = isSelected ? 5 : (isRoot ? 3 : 3);
 
                     // Position label above the node
-                    // Base geometry radius is 6, scaled by 'scale'
-                    const offset = 6 * scale + 4;
+                    const offset = 6 + 4;
                     sprite.position.set(0, offset, 0);
 
                     // 3. Group them
@@ -163,7 +162,7 @@ export default function GraphRenderer3D({
                     if (isRoot || isSelected) {
                         const ringGeo = new THREE.RingGeometry(8 * scale, 9 * scale, 32);
                         const ringMat = new THREE.MeshBasicMaterial({
-                            color: isRoot ? "#ec4899" : "#f472b6",
+                            color: isRoot ? "#d8b4fe" : "#f472b6",
                             side: THREE.DoubleSide,
                             transparent: true,
                             opacity: 0.5,
@@ -174,18 +173,14 @@ export default function GraphRenderer3D({
                         // For simplicity, let's just make it a billboard or sprite if we want.
                         // Using a simple point light for shading emphasis
                         if (isRoot) {
-                            const light = new THREE.PointLight(0xec4899, 2, 50);
+                            const light = new THREE.PointLight(0xd8b4fe, 2, 50);
                             group.add(light);
                         }
                     }
 
                     return group;
                 }}
-                nodeVal={(node: any) => {
-                    // ForceGraph3D uses nodeVal for radius calculation if we weren't replacing the object.
-                    // But we are replacing it. The simulation still uses it for collision radius defaults.
-                    return node.id === rootNodeId ? 30 : 10;
-                }}
+                nodeVal={() => 10}
                 onNodeHover={(node: any) => onHoverNodeIdChange(node ? node.id : null)}
                 linkColor={(link: any) => {
                     const source = toNodeId(link.source);

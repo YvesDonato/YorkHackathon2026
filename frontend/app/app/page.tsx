@@ -357,12 +357,12 @@ export default function Home() {
       activeResizeHandle === "move"
         ? "move"
         : activeResizeHandle === "right" || activeResizeHandle === "left"
-        ? "ew-resize"
-        : activeResizeHandle === "bottom"
-          ? "ns-resize"
-          : activeResizeHandle === "corner-right"
-            ? "nwse-resize"
-            : "nesw-resize";
+          ? "ew-resize"
+          : activeResizeHandle === "bottom"
+            ? "ns-resize"
+            : activeResizeHandle === "corner-right"
+              ? "nwse-resize"
+              : "nesw-resize";
 
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
@@ -788,14 +788,14 @@ export default function Home() {
       .attr("r", 36)
       .attr("fill", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId) return "#f59e0b";
-        if (node.id === rootId) return "#ec4899";
+        if (node.id === rootId) return "#d8b4fe"; // Light purple
         return hasOutgoingLinks(node.id) ? "#a855f7" : "#404040";
       })
       .style("filter", (node: ApiGraphNode) => {
         if (node.id === expandingNodeId)
           return "drop-shadow(0 0 14px rgba(245, 158, 11, 0.7))";
         if (node.id === rootId)
-          return "drop-shadow(0 0 12px rgba(236, 72, 153, 0.6))";
+          return "drop-shadow(0 0 12px rgba(216, 180, 254, 0.6))"; // Light purple shadow
         return hasOutgoingLinks(node.id)
           ? "drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))"
           : "none";
@@ -1315,11 +1315,10 @@ export default function Home() {
           setRendererNotice(null);
           setRendererMode("2d");
         }}
-        className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${
-          activeRenderer === "2d"
+        className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${activeRenderer === "2d"
             ? "bg-[var(--accent-primary)]/20 text-white"
             : "text-[var(--text-secondary)] hover:bg-white/10"
-        }`}
+          }`}
       >
         2D
       </button>
@@ -1330,11 +1329,10 @@ export default function Home() {
             setRendererNotice(null);
             setRendererMode("3d");
           }}
-          className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${
-            activeRenderer === "3d"
+          className={`flex h-8 items-center rounded-md px-3 text-[11px] font-semibold transition-colors ${activeRenderer === "3d"
               ? "bg-[var(--accent-primary)]/20 text-white"
               : "text-[var(--text-secondary)] hover:bg-white/10"
-          }`}
+            }`}
         >
           3D (Experimental)
         </button>
@@ -1507,11 +1505,10 @@ export default function Home() {
                   {sessions.map((session) => (
                     <div
                       key={session.id}
-                      className={`p-2.5 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${
-                        currentSessionId === session.id
-                          ? "border-[var(--accent-primary)] bg-[var(--accent-primary)]/10"
-                          : "border-transparent hover:bg-white/5"
-                      }`}
+                      className={`p-2.5 rounded-lg border transition-all cursor-pointer hover:border-[var(--accent-primary)] ${currentSessionId === session.id
+                        ? "border-[var(--accent-primary)] bg-[var(--accent-primary)]/10"
+                        : "border-transparent hover:bg-white/5"
+                        }`}
                       onClick={() => void loadSessionGraph(session.id)}
                     >
                       <div className="flex items-start justify-between gap-2">
