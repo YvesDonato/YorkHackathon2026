@@ -16,12 +16,19 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import * as d3 from "d3";
 import {
+  clearUserGeminiApiKey,
   createSession,
+  GEMINI_API_KEY_INVALID_CODE,
+  GEMINI_API_KEY_MISSING_CODE,
+  GEMINI_QUOTA_EXHAUSTED_CODE,
   listSessions,
   getSession,
+  getUserGeminiApiKey,
+  isApiError,
   updateSession,
   deleteSession as deleteSessionApi,
   expandSessionNode,
+  setUserGeminiApiKey,
   type ApiGraphLink,
   type ApiGraphNode,
   type Session,
@@ -39,6 +46,11 @@ type GraphState = {
   nodes: ApiGraphNode[];
   links: ApiGraphLink[];
 };
+
+type PendingGeminiRetryAction =
+  | { kind: "create-session"; seedLink: string }
+  | { kind: "expand-node"; sessionId: string; nodeId: string }
+  | null;
 
 type ResizeHandle =
   | "move"
@@ -128,6 +140,13 @@ export default function Home() {
   );
   const [isLoadingGraph, setIsLoadingGraph] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
+  const [isGeminiKeyModalOpen, setIsGeminiKeyModalOpen] = useState(false);
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [isGeminiKeyVisible, setIsGeminiKeyVisible] = useState(false);
+  const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null);
+  const [isGeminiKeySubmitting, setIsGeminiKeySubmitting] = useState(false);
+  const [pendingGeminiRetryAction, setPendingGeminiRetryAction] =
+    useState<PendingGeminiRetryAction>(null);
 
   // Interaction State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -202,6 +221,51 @@ export default function Home() {
     setIsAuthenticated(true);
     setIsAuthChecking(false);
   }, [router]);
+
+  useEffect(() => {
+    const savedGeminiKey = getUserGeminiApiKey();
+    if (savedGeminiKey) {
+      setGeminiKeyInput(savedGeminiKey);
+    }
+  }, []);
+
+  const handleGeminiApiKeyError = useCallback(
+    (
+      error: unknown,
+      retryAction: Exclude<PendingGeminiRetryAction, null>,
+    ): boolean => {
+      if (!isApiError(error)) {
+        return false;
+      }
+
+      let warningMessage: string | null = null;
+      if (error.code === GEMINI_QUOTA_EXHAUSTED_CODE) {
+        warningMessage =
+          "Google API key quota is exhausted. Enter a new key to continue.";
+      } else if (error.code === GEMINI_API_KEY_INVALID_CODE) {
+        warningMessage =
+          "The provided Google API key is invalid. Enter a valid key to continue.";
+      } else if (error.code === GEMINI_API_KEY_MISSING_CODE) {
+        warningMessage =
+          "No Google API key is configured. Enter a key to continue.";
+      }
+
+      if (!warningMessage) {
+        return false;
+      }
+
+      setPendingGeminiRetryAction(retryAction);
+      setGeminiKeyError(warningMessage);
+      setGraphError(warningMessage);
+      setIsGeminiKeyModalOpen(true);
+      setIsGeminiKeyVisible(false);
+
+      const savedGeminiKey = getUserGeminiApiKey();
+      setGeminiKeyInput((current) => current || savedGeminiKey || "");
+      return true;
+    },
+    [],
+  );
 
   // Load Sessions
   const loadSessions = useCallback(async () => {
@@ -696,14 +760,14 @@ export default function Home() {
   }, [sessions, loadSessions]);
 
   const createNewSession = useCallback(
-    async (seedLink: string) => {
+    async (seedLink: string): Promise<boolean> => {
       const normalizedSeed = seedLink.trim();
       if (!normalizedSeed) {
         setGraphError("Enter an arXiv URL or ID.");
         setGraphState(createEmptyGraphState());
         setSelectedNodeId(null);
         setIsLoadingGraph(false);
-        return;
+        return false;
       }
 
       setIsLoadingGraph(true);
@@ -716,14 +780,48 @@ export default function Home() {
         });
         await loadSessions();
         await loadSessionGraph(session.id);
+        return true;
       } catch (error) {
+        if (
+          handleGeminiApiKeyError(error, {
+            kind: "create-session",
+            seedLink: normalizedSeed,
+          })
+        ) {
+          setIsLoadingGraph(false);
+          return false;
+        }
         setGraphError(formatError(error));
         setGraphState(createEmptyGraphState());
         setSelectedNodeId(null);
         setIsLoadingGraph(false);
+        return false;
       }
     },
-    [loadSessions, loadSessionGraph],
+    [handleGeminiApiKeyError, loadSessions, loadSessionGraph],
+  );
+
+  const expandNode = useCallback(
+    async (sessionId: string, nodeId: string): Promise<boolean> => {
+      if (expandingNodeId) return false;
+
+      setExpandingNodeId(nodeId);
+      try {
+        const response = await expandSessionNode(sessionId, nodeId);
+        setGraphState({ nodes: response.nodes, links: response.links });
+        return true;
+      } catch (error) {
+        console.error("Failed to expand node:", error);
+        if (handleGeminiApiKeyError(error, { kind: "expand-node", sessionId, nodeId })) {
+          return false;
+        }
+        setGraphError(`Failed to expand node: ${formatError(error)}`);
+        return false;
+      } finally {
+        setExpandingNodeId(null);
+      }
+    },
+    [expandingNodeId, handleGeminiApiKeyError],
   );
 
   const deleteSession = useCallback(
@@ -783,21 +881,9 @@ export default function Home() {
   const handleExpandNode = useCallback(
     (nodeId: string) => {
       if (!currentSessionId || expandingNodeId) return;
-
-      setExpandingNodeId(nodeId);
-      expandSessionNode(currentSessionId, nodeId)
-        .then((response) => {
-          setGraphState({ nodes: response.nodes, links: response.links });
-        })
-        .catch((error) => {
-          console.error("Failed to expand node:", error);
-          setGraphError(`Failed to expand node: ${formatError(error)}`);
-        })
-        .finally(() => {
-          setExpandingNodeId(null);
-        });
+      void expandNode(currentSessionId, nodeId);
     },
-    [currentSessionId, expandingNodeId],
+    [currentSessionId, expandingNodeId, expandNode],
   );
 
   const handleNodeMouseDown = useCallback((nodeId: string) => {
@@ -814,6 +900,61 @@ export default function Home() {
       void createNewSession(seedInput);
     },
     [createNewSession, seedInput],
+  );
+
+  const closeGeminiKeyModal = useCallback(() => {
+    if (isGeminiKeySubmitting) return;
+    setIsGeminiKeyModalOpen(false);
+    setPendingGeminiRetryAction(null);
+    setGeminiKeyError(null);
+    setIsGeminiKeyVisible(false);
+  }, [isGeminiKeySubmitting]);
+
+  const handleClearSavedGeminiKey = useCallback(() => {
+    clearUserGeminiApiKey();
+    setGeminiKeyInput("");
+    setGeminiKeyError("Saved key cleared. Enter a replacement key.");
+  }, []);
+
+  const runPendingGeminiRetry = useCallback(async (): Promise<boolean> => {
+    if (!pendingGeminiRetryAction) return true;
+
+    if (pendingGeminiRetryAction.kind === "create-session") {
+      return createNewSession(pendingGeminiRetryAction.seedLink);
+    }
+
+    return expandNode(
+      pendingGeminiRetryAction.sessionId,
+      pendingGeminiRetryAction.nodeId,
+    );
+  }, [createNewSession, expandNode, pendingGeminiRetryAction]);
+
+  const handleGeminiKeySubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const normalizedKey = geminiKeyInput.trim();
+      if (!normalizedKey) {
+        setGeminiKeyError("Enter a Google API key.");
+        return;
+      }
+
+      setUserGeminiApiKey(normalizedKey);
+      setGeminiKeyError(null);
+      setGraphError(null);
+      setIsGeminiKeySubmitting(true);
+
+      try {
+        const retrySucceeded = await runPendingGeminiRetry();
+        if (retrySucceeded) {
+          setIsGeminiKeyModalOpen(false);
+          setPendingGeminiRetryAction(null);
+          setIsGeminiKeyVisible(false);
+        }
+      } finally {
+        setIsGeminiKeySubmitting(false);
+      }
+    },
+    [geminiKeyInput, runPendingGeminiRetry],
   );
 
   // ── D3 2D Graph Rendering ──
@@ -2068,6 +2209,109 @@ export default function Home() {
           {rendererToggleButtons}
         </div>
       </div>
+
+      {isGeminiKeyModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={closeGeminiKeyModal}
+            disabled={isGeminiKeySubmitting}
+            aria-label="Close Google API key prompt"
+          />
+          <aside className="pointer-events-auto relative w-full max-w-md rounded-2xl border border-amber-500/40 bg-[#0a0a0a]/95 p-5 shadow-2xl backdrop-blur-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="mt-0.5 rounded-lg bg-amber-500/20 p-2 text-amber-300">
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-white">
+                  Google API key required
+                </h2>
+                <p className="mt-1 text-xs text-white/70">
+                  Quota or key configuration blocked this request. Provide a new
+                  Google API key and Prismarine will retry automatically.
+                </p>
+              </div>
+            </div>
+
+            <form className="space-y-3" onSubmit={handleGeminiKeySubmit}>
+              <div>
+                <label
+                  htmlFor="gemini-key-input"
+                  className="mb-1 block text-[11px] font-semibold text-white/80"
+                >
+                  Google API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="gemini-key-input"
+                    type={isGeminiKeyVisible ? "text" : "password"}
+                    value={geminiKeyInput}
+                    onChange={(event) => setGeminiKeyInput(event.target.value)}
+                    placeholder="AIza..."
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-xs text-white outline-none transition-colors focus:border-amber-400/70"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsGeminiKeyVisible((current) => !current)}
+                    className="rounded-lg border border-white/15 px-3 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/10"
+                  >
+                    {isGeminiKeyVisible ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              {geminiKeyError && (
+                <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  {geminiKeyError}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={handleClearSavedGeminiKey}
+                  className="text-[11px] font-semibold text-white/70 underline underline-offset-2 transition-colors hover:text-white"
+                >
+                  Clear saved key
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={closeGeminiKeyModal}
+                    disabled={isGeminiKeySubmitting}
+                    className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isGeminiKeySubmitting}
+                    className="rounded-lg bg-amber-500/80 px-3 py-2 text-xs font-semibold text-black transition-colors hover:bg-amber-400 disabled:opacity-60"
+                  >
+                    {isGeminiKeySubmitting ? "Retrying..." : "Use key and retry"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </aside>
+        </div>
+      )}
+
       {selectedNode && !viewingPdfId && isMobileDetailsOpen && (
         <div className="fixed inset-0 z-30 lg:hidden">
           <button

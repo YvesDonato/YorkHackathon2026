@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from routes.audio import router as audio_router
@@ -18,6 +18,9 @@ from papers import (
     cosine_similarity,
     find_similar_papers_via_search,
     find_similar_pmc_papers,
+    GEMINI_API_KEY_INVALID_CODE,
+    GEMINI_API_KEY_MISSING_CODE,
+    GEMINI_QUOTA_EXHAUSTED_CODE,
     generate_embedding,
     generate_embeddings_batch,
 )
@@ -114,6 +117,34 @@ class SessionResponse(BaseModel):
     mode: str
     created_at: str
     last_accessed: str
+
+
+_BLOCKING_GEMINI_ERROR_CODES = {
+    GEMINI_QUOTA_EXHAUSTED_CODE,
+    GEMINI_API_KEY_INVALID_CODE,
+    GEMINI_API_KEY_MISSING_CODE,
+}
+
+
+def extract_error_code(detail: Any) -> str | None:
+    if isinstance(detail, dict):
+        code = detail.get("code")
+        if isinstance(code, str):
+            return code
+    return None
+
+
+def should_raise_gemini_http_exception(exc: HTTPException) -> bool:
+    return extract_error_code(exc.detail) in _BLOCKING_GEMINI_ERROR_CODES
+
+
+def get_request_gemini_api_key(
+    x_gemini_api_key: str | None = Header(default=None),
+) -> str | None:
+    if not x_gemini_api_key:
+        return None
+    normalized = x_gemini_api_key.strip()
+    return normalized or None
 
 
 def normalize_whitespace(value: str) -> str:
@@ -409,6 +440,7 @@ def build_reference_node(reference: dict[str, Any]) -> GraphNode | None:
 async def _generate_graph_internal(
     paper_id: str,
     mode: str,
+    gemini_api_key: str | None = None,
 ) -> tuple[GraphResponse, list[GraphNode], list[list[float]]]:
     """Internal helper to generate a graph for a given paper.
     
@@ -451,7 +483,16 @@ async def _generate_graph_internal(
                 logger.info(f"PMC search returned {len(discovered)} papers")
             else:
                 # Search for similar arXiv papers
-                discovered = await find_similar_papers_via_search(seed_title, seed_summary)
+                discovered = await find_similar_papers_via_search(
+                    seed_title,
+                    seed_summary,
+                    api_key_override=gemini_api_key,
+                )
+        except HTTPException as exc:
+            if should_raise_gemini_http_exception(exc):
+                raise
+            logger.error(f"Search failed for {paper_id}: {exc}", exc_info=True)
+            discovery_error = f"Search failed: {exc.detail}"
         except Exception as exc:
             logger.error(f"Search failed for {paper_id}: {exc}", exc_info=True)
             discovery_error = f"Search failed: {exc}"
@@ -557,7 +598,14 @@ async def _generate_graph_internal(
     # ── Generate embeddings for all nodes in one batch ───────────────────
     summaries = [n.summary or n.content for n in nodes]
     try:
-        embeddings = await generate_embeddings_batch(summaries)
+        embeddings = await generate_embeddings_batch(
+            summaries,
+            api_key_override=gemini_api_key,
+        )
+    except HTTPException as exc:
+        if should_raise_gemini_http_exception(exc):
+            raise
+        embeddings = []
     except Exception:
         embeddings = []
 
@@ -626,6 +674,7 @@ async def get_graph(
     link: str = Query(..., description="Seed arXiv or PMC paper link or ID"),
     mode: str = Query("grounding", description="Discovery mode: 'grounding' (Google Search) or 'references' (Semantic Scholar)"),
     current_user: dict = Depends(get_current_user),
+    gemini_api_key: str | None = Depends(get_request_gemini_api_key),
 ):
     """Return a similarity graph for a seed paper.
 
@@ -639,7 +688,11 @@ async def get_graph(
     if not paper_id:
         raise HTTPException(status_code=422, detail="A valid arXiv or PMC link or ID is required")
 
-    graph_response, _, _ = await _generate_graph_internal(paper_id, mode)
+    graph_response, _, _ = await _generate_graph_internal(
+        paper_id,
+        mode,
+        gemini_api_key=gemini_api_key,
+    )
     return graph_response
 
 
@@ -661,6 +714,7 @@ class GraphSearchResult(BaseModel):
 async def create_session(
     session_create: SessionCreate,
     current_user: dict = Depends(get_current_user),
+    gemini_api_key: str | None = Depends(get_request_gemini_api_key),
 ):
     """Create a new graph exploration session."""
     paper_id = canonicalize_paper_id(session_create.seed_paper_link)
@@ -668,7 +722,11 @@ async def create_session(
         raise HTTPException(status_code=422, detail="A valid arXiv or PMC link or ID is required")
 
     # Generate graph using internal helper
-    graph_response, nodes, _ = await _generate_graph_internal(paper_id, session_create.mode)
+    graph_response, nodes, _ = await _generate_graph_internal(
+        paper_id,
+        session_create.mode,
+        gemini_api_key=gemini_api_key,
+    )
 
     # Determine session title: use provided title, or fallback to seed paper's title
     session_title = session_create.title
@@ -906,6 +964,7 @@ async def expand_session_node(
     session_id: str,
     node_id: str,
     current_user: dict = Depends(get_current_user),
+    gemini_api_key: str | None = Depends(get_request_gemini_api_key),
 ):
     """Expand a node in a session by discovering its related papers and merging them in.
 
@@ -942,7 +1001,11 @@ async def expand_session_node(
 
     # Generate the graph for the clicked node (discovers its related papers)
     paper_id = canonicalize_paper_id(node_id)
-    graph_response, new_nodes, new_embeddings = await _generate_graph_internal(paper_id, mode)
+    graph_response, new_nodes, new_embeddings = await _generate_graph_internal(
+        paper_id,
+        mode,
+        gemini_api_key=gemini_api_key,
+    )
 
     # Filter to only truly new papers (not already in the session)
     now = datetime.now(timezone.utc)
@@ -1024,9 +1087,10 @@ async def graph_search(
     q: str = Query(..., description="Search query"),
     limit: int = Query(10, ge=1, le=50),
     current_user: dict = Depends(get_current_user),
+    gemini_api_key: str | None = Depends(get_request_gemini_api_key),
 ):
     """Semantic search over all graph papers using Atlas Vector Search."""
-    query_embedding = await generate_embedding(q)
+    query_embedding = await generate_embedding(q, api_key_override=gemini_api_key)
     db = get_db()
 
     pipeline = [

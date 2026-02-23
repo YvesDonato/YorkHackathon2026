@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+from typing import Any
 
 import httpx
 from google import genai
@@ -19,18 +20,129 @@ GROUNDING_MODEL = "gemini-2.5-flash-lite"
 PMC_API_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 PMC_ID_PATTERN = re.compile(r'PMC\d+', re.IGNORECASE)
 
-# Initialize Gemini client
-genai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+GEMINI_QUOTA_EXHAUSTED_CODE = "GEMINI_QUOTA_EXHAUSTED"
+GEMINI_API_KEY_INVALID_CODE = "GEMINI_API_KEY_INVALID"
+GEMINI_API_KEY_MISSING_CODE = "GEMINI_API_KEY_MISSING"
+GEMINI_REQUEST_FAILED_CODE = "GEMINI_REQUEST_FAILED"
+_GEMINI_CLIENT_CACHE: dict[str, genai.Client] = {}
+
+
+def _gemini_error_detail(code: str, message: str, retryable: bool) -> dict[str, Any]:
+    return {"code": code, "message": message, "retryable": retryable}
+
+
+def _extract_error_status(exc: Exception) -> int | None:
+    for attr_name in ("status_code", "code"):
+        raw_value = getattr(exc, attr_name, None)
+        if isinstance(raw_value, int):
+            return raw_value
+        if isinstance(raw_value, str) and raw_value.isdigit():
+            return int(raw_value)
+
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+
+    return None
+
+
+def _is_quota_exhausted_error(status_code: int | None, message: str) -> bool:
+    message_lc = message.lower()
+    if status_code == 429:
+        return True
+    return any(
+        marker in message_lc
+        for marker in (
+            "resource_exhausted",
+            "resource exhausted",
+            "quota",
+            "rate limit",
+            "too many requests",
+        )
+    )
+
+
+def _is_invalid_api_key_error(status_code: int | None, message: str) -> bool:
+    message_lc = message.lower()
+    if status_code in {401, 403}:
+        return True
+    if status_code == 400 and "api key" in message_lc:
+        return True
+    return any(
+        marker in message_lc
+        for marker in (
+            "api key not valid",
+            "invalid api key",
+            "invalid key",
+            "permission denied",
+            "unauthenticated",
+        )
+    )
+
+
+def _raise_gemini_request_error(exc: Exception, operation: str) -> None:
+    status_code = _extract_error_status(exc)
+    raw_message = str(exc).strip() or "Gemini request failed."
+
+    if _is_quota_exhausted_error(status_code, raw_message):
+        raise HTTPException(
+            status_code=429,
+            detail=_gemini_error_detail(
+                GEMINI_QUOTA_EXHAUSTED_CODE,
+                "Google Gemini API quota is exhausted for the current key.",
+                True,
+            ),
+        )
+
+    if _is_invalid_api_key_error(status_code, raw_message):
+        raise HTTPException(
+            status_code=401,
+            detail=_gemini_error_detail(
+                GEMINI_API_KEY_INVALID_CODE,
+                "The provided Google Gemini API key is invalid.",
+                False,
+            ),
+        )
+
+    raise HTTPException(
+        status_code=502,
+        detail=_gemini_error_detail(
+            GEMINI_REQUEST_FAILED_CODE,
+            f"Gemini {operation} request failed.",
+            True,
+        ),
+    )
+
+
+def get_genai_client(api_key_override: str | None = None) -> genai.Client:
+    api_key = (api_key_override or GEMINI_API_KEY or "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail=_gemini_error_detail(
+                GEMINI_API_KEY_MISSING_CODE,
+                "GEMINI_API_KEY is not set on the server and no override key was provided.",
+                False,
+            ),
+        )
+
+    cached_client = _GEMINI_CLIENT_CACHE.get(api_key)
+    if cached_client is not None:
+        return cached_client
+
+    client = genai.Client(api_key=api_key)
+    _GEMINI_CLIENT_CACHE[api_key] = client
+    return client
 
 
 # ---------------------------------------------------------------------------
 # Embedding helpers
 # ---------------------------------------------------------------------------
 
-async def generate_embedding(text: str) -> list[float]:
+async def generate_embedding(text: str, api_key_override: str | None = None) -> list[float]:
     """Generate an embedding vector for the given text using Google Gemini."""
-    if not genai_client:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
+    genai_client = get_genai_client(api_key_override)
 
     try:
         result = genai_client.models.embed_content(
@@ -42,18 +154,17 @@ async def generate_embedding(text: str) -> list[float]:
         )
         return result.embeddings[0].values
     except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Gemini embedding request failed: {str(e)}",
-        )
+        _raise_gemini_request_error(e, "embedding")
 
 
-async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
+async def generate_embeddings_batch(
+    texts: list[str],
+    api_key_override: str | None = None,
+) -> list[list[float]]:
     """Generate embedding vectors for multiple texts in a single Gemini API call."""
-    if not genai_client:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
     if not texts:
         return []
+    genai_client = get_genai_client(api_key_override)
 
     try:
         result = genai_client.models.embed_content(
@@ -62,10 +173,7 @@ async def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
         )
         return [e.values for e in result.embeddings]
     except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Gemini batch embedding request failed: {str(e)}",
-        )
+        _raise_gemini_request_error(e, "batch embedding")
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -89,13 +197,13 @@ async def find_similar_papers_via_search(
     title: str,
     summary: str,
     max_results: int = 8,
+    api_key_override: str | None = None,
 ) -> list[dict]:
     """Use Gemini with Google Search grounding to find related arXiv papers.
 
     Returns a list of dicts with keys: ``arxiv_id``, ``title``.
     """
-    if not genai_client:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
+    genai_client = get_genai_client(api_key_override)
 
     # Truncate summary to keep the prompt focused
     summary_excerpt = summary[:500] if summary else ""
@@ -121,6 +229,11 @@ async def find_similar_papers_via_search(
             config=config,
         )
     except Exception as exc:
+        if _is_quota_exhausted_error(_extract_error_status(exc), str(exc)) or _is_invalid_api_key_error(
+            _extract_error_status(exc),
+            str(exc),
+        ):
+            _raise_gemini_request_error(exc, "grounded search")
         logger.warning("Google Search grounding request failed: %s", exc)
         return []
 

@@ -1,7 +1,13 @@
 const LOCALHOST_HTTP_URL_PATTERN =
   /^https?:\/\/(localhost|127(?:\.\d{1,3}){3})(:\d+)?(\/|$)/i;
 const AUTH_REDIRECT_PATH = "/";
+const USER_GEMINI_API_KEY_STORAGE_KEY = "prismarine_user_gemini_api_key";
+const GEMINI_API_KEY_HEADER = "X-Gemini-Api-Key";
 let hasTriggeredUnauthorizedRedirect = false;
+
+export const GEMINI_QUOTA_EXHAUSTED_CODE = "GEMINI_QUOTA_EXHAUSTED";
+export const GEMINI_API_KEY_INVALID_CODE = "GEMINI_API_KEY_INVALID";
+export const GEMINI_API_KEY_MISSING_CODE = "GEMINI_API_KEY_MISSING";
 
 const getFastApiBaseUrl = (): string => {
   const configuredBaseUrl = (process.env.NEXT_PUBLIC_FASTAPI_BASE_URL ?? "/api").trim();
@@ -22,6 +28,45 @@ const getFastApiBaseUrl = (): string => {
 };
 
 export const FASTAPI_BASE_URL = getFastApiBaseUrl();
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  retryable?: boolean;
+
+  constructor(message: string, options: { status: number; code?: string; retryable?: boolean }) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options.status;
+    this.code = options.code;
+    this.retryable = options.retryable;
+  }
+}
+
+export const isApiError = (error: unknown): error is ApiError => error instanceof ApiError;
+
+export const getUserGeminiApiKey = (): string | null => {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(USER_GEMINI_API_KEY_STORAGE_KEY);
+  if (!raw) return null;
+  const normalized = raw.trim();
+  return normalized || null;
+};
+
+export const setUserGeminiApiKey = (apiKey: string): void => {
+  if (typeof window === "undefined") return;
+  const normalized = apiKey.trim();
+  if (!normalized) {
+    localStorage.removeItem(USER_GEMINI_API_KEY_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(USER_GEMINI_API_KEY_STORAGE_KEY, normalized);
+};
+
+export const clearUserGeminiApiKey = (): void => {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_GEMINI_API_KEY_STORAGE_KEY);
+};
 
 const handleUnauthorizedSession = (): void => {
   if (typeof window === "undefined") return;
@@ -124,17 +169,39 @@ const buildUrl = (path: string, params: Record<string, string>): string => {
   return queryString ? `${resolvedPath}?${queryString}` : resolvedPath;
 };
 
-const parseErrorDetail = async (response: Response): Promise<string> => {
+const parseErrorDetail = async (
+  response: Response,
+): Promise<{ message: string; code?: string; retryable?: boolean }> => {
   try {
     const payload = (await response.json()) as { detail?: unknown };
-    if (typeof payload.detail === "string" && payload.detail.trim()) {
-      return payload.detail;
+    if (typeof payload.detail === "string") {
+      const message = payload.detail.trim();
+      if (message) {
+        return { message };
+      }
+    }
+    if (payload.detail && typeof payload.detail === "object") {
+      const detailRecord = payload.detail as Record<string, unknown>;
+      const message =
+        typeof detailRecord.message === "string" && detailRecord.message.trim()
+          ? detailRecord.message.trim()
+          : "";
+      const code =
+        typeof detailRecord.code === "string" && detailRecord.code.trim()
+          ? detailRecord.code.trim()
+          : undefined;
+      const retryable =
+        typeof detailRecord.retryable === "boolean" ? detailRecord.retryable : undefined;
+
+      if (message || code || retryable !== undefined) {
+        return { message, code, retryable };
+      }
     }
   } catch {
     // Ignore JSON parsing errors and fall back to status text.
   }
 
-  return "";
+  return { message: "" };
 };
 
 const requestJson = async <T>(
@@ -143,6 +210,8 @@ const requestJson = async <T>(
   options: {
     method?: string;
     body?: unknown;
+    headers?: Record<string, string>;
+    includeGeminiApiKey?: boolean;
   } = {},
 ): Promise<T> => {
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -153,6 +222,17 @@ const requestJson = async <T>(
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
+  }
+
+  if (options.includeGeminiApiKey) {
+    const userGeminiApiKey = getUserGeminiApiKey();
+    if (userGeminiApiKey) {
+      headers[GEMINI_API_KEY_HEADER] = userGeminiApiKey;
+    }
+  }
+
+  if (options.headers) {
+    Object.assign(headers, options.headers);
   }
 
   const fetchOptions: RequestInit = {
@@ -172,10 +252,15 @@ const requestJson = async <T>(
   if (!response.ok) {
     const detail = await parseErrorDetail(response);
     const statusLabel = `${response.status} ${response.statusText}`.trim();
-    if (response.status === 401) {
+    if (response.status === 401 && detail.code !== GEMINI_API_KEY_INVALID_CODE) {
       handleUnauthorizedSession();
     }
-    throw new Error(detail ? `${statusLabel}: ${detail}` : statusLabel);
+    const errorMessage = detail.message ? `${statusLabel}: ${detail.message}` : statusLabel;
+    throw new ApiError(errorMessage, {
+      status: response.status,
+      code: detail.code,
+      retryable: detail.retryable,
+    });
   }
 
   hasTriggeredUnauthorizedRedirect = false;
@@ -189,14 +274,18 @@ const requestJson = async <T>(
 };
 
 export const fetchGraph = (link: string): Promise<ApiGraphResponse> =>
-  requestJson<ApiGraphResponse>("/graph", { link });
+  requestJson<ApiGraphResponse>("/graph", { link }, { includeGeminiApiKey: true });
 
 export const fetchPaper = (link: string): Promise<PaperResponse> =>
   requestJson<PaperResponse>("/paper", { link });
 
 // Session API functions
 export const createSession = (payload: SessionCreate): Promise<Session> =>
-  requestJson<Session>("/sessions", {}, { method: "POST", body: payload });
+  requestJson<Session>("/sessions", {}, {
+    method: "POST",
+    body: payload,
+    includeGeminiApiKey: true,
+  });
 
 export const listSessions = (): Promise<Session[]> =>
   requestJson<Session[]>("/sessions");
@@ -211,7 +300,11 @@ export const deleteSession = (sessionId: string): Promise<void> =>
   requestJson<void>(`/sessions/${sessionId}`, {}, { method: "DELETE" });
 
 export const expandSessionNode = (sessionId: string, nodeId: string): Promise<ApiGraphResponse> =>
-  requestJson<ApiGraphResponse>(`/sessions/${sessionId}/expand/${nodeId}`, {}, { method: "POST" });
+  requestJson<ApiGraphResponse>(
+    `/sessions/${sessionId}/expand/${nodeId}`,
+    {},
+    { method: "POST", includeGeminiApiKey: true },
+  );
 
 
 
@@ -236,7 +329,12 @@ export const generateSummaryAudio = async (
   if (!response.ok) {
     const detail = await parseErrorDetail(response);
     const statusLabel = `${response.status} ${response.statusText}`.trim();
-    throw new Error(detail ? `${statusLabel}: ${detail}` : statusLabel);
+    const errorMessage = detail.message ? `${statusLabel}: ${detail.message}` : statusLabel;
+    throw new ApiError(errorMessage, {
+      status: response.status,
+      code: detail.code,
+      retryable: detail.retryable,
+    });
   }
   return response.blob();
 };
